@@ -16,6 +16,7 @@
 #include "../general/forall.hpp"
 
 #if defined(MFEM_USE_SUNDIALS)
+#include "sundials.hpp"
 #if defined(MFEM_USE_MPI)
 #include <nvector/nvector_mpiplusx.h>
 #include <nvector/nvector_parallel.h>
@@ -1200,22 +1201,8 @@ void Vector::ToNVector(N_Vector &nv)
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         MFEM_ABORT("SUNDIALS_NVEC_CUDA");
-         //MFEM_ASSERT(N_VOwnData_Cuda(nv) == SUNFALSE, "invalid cuda N_Vector");
-         if (data.GetMemoryType() == MemoryType::CUDA)
-         {
-            //N_VSetHostArrayPointer_Cuda(nv, data.HostReadWrite());
-            //N_VSetDeviceArrayPointer_Cuda(nv, data.ReadWrite());
-            //N_VResize_Cuda(nv, size);
-         }
-         else if (data.GetMemoryType() == MemoryType::CUDA_UVM)
-         {
-            //N_VSetManagedArrayPointer_Cuda(nv, data);
-         }
-         else
-         {
-            MFEM_ABORT("invalid memory type for cuda N_Vector");
-         }
+         // MFEM_ASSERT(N_VOwnContent_Cuda(nv) == SUNFALSE, "invalid cuda N_Vector");
+         N_VSetContent_Cuda(nv, new SundialsDeviceVector(*this));
          break;
 #endif
 #ifdef MFEM_USE_MPI

@@ -40,6 +40,66 @@ namespace mfem
 {
 
 // ---------------------------------------------------------------------------
+// SUNDIALS DeviceVector interface functions
+// ---------------------------------------------------------------------------
+
+#ifdef MFEM_USE_GPU
+long SundialsDeviceVector::size() const
+{
+   return x.Size();
+}
+
+double* SundialsDeviceVector::host()
+{
+   return x.HostReadWrite();
+}
+
+const double* SundialsDeviceVector::host() const
+{
+   return x.HostRead();
+}
+
+double* SundialsDeviceVector::device()
+{
+   return x.ReadWrite();
+}
+
+const double* SundialsDeviceVector::device() const
+{
+   return x.Read();
+}
+
+bool SundialsDeviceVector::isManaged() const
+{
+   return x.GetMemory().GetMemoryType() == MemoryType::CUDA_UVM;
+}
+
+void SundialsDeviceVector::copyToDev()
+{
+   return x.GetMemory().CopyFromHost(x.HostRead(), x.Size());
+}
+
+void SundialsDeviceVector::copyFromDev()
+{
+   return x.GetMemory().CopyToHost(x.HostReadWrite(), x.Size());
+}
+
+double SundialsDeviceVector::VecDot(N_Vector nvecx, N_Vector nvecy)
+{
+   Vector x = Vector(nvecx);
+   Vector y = Vector(nvecy);
+   return x * y;
+}
+
+N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
+{
+   N_Vector nvecx = N_VNewEmpty_Cuda();
+   nvecx->ops->nvdotprod = SundialsDeviceVector::VecDot;
+   return nvecx;
+}
+#endif
+
+// ---------------------------------------------------------------------------
 // SUNMatrix interface functions
 // ---------------------------------------------------------------------------
 
@@ -126,8 +186,8 @@ CVODESolver::CVODESolver(int lmm)
 {
 #ifdef MFEM_USE_CUDA
    // Allocate an empty cuda N_Vector
-   y = N_VNewEmpty_Cuda();
-   MFEM_VERIFY(y, "error in N_VNewEmpty_Cuda()");
+   y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
+   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
 #else
    // Allocate an empty serial N_Vector
    y = N_VNewEmpty_Serial(0);
@@ -143,8 +203,8 @@ CVODESolver::CVODESolver(MPI_Comm comm, int lmm)
    {
 #ifdef MFEM_USE_CUDA
       // Allocate an empty cuda N_Vector
-      y = N_VNewEmpty_Cuda();
-      MFEM_VERIFY(y, "error in N_VNewEmpty_Cuda()");
+      y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
+      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
 #else
       // Allocate an empty serial N_Vector
       y = N_VNewEmpty_Serial(0);
@@ -154,11 +214,7 @@ CVODESolver::CVODESolver(MPI_Comm comm, int lmm)
    else
    {
 #ifdef MFEM_USE_CUDA
-      // Allocate an empty MPIPlusX N_Vector with CUDA underneath
-      y_loc = N_VNewEmpty_Cuda()
-              MFEM_VERIFY(y_loc, "error in N_VNewEmpty_Cuda()");
-      y = N_VMake_MPIPlusX(comm, y_loc);
-      MFEM_VERIFY(y, "error in N_VMake_MPIPlusX()");
+      MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented\n");
 #else
       // Allocate an empty parallel N_Vector
       y = N_VNewEmpty_Parallel(comm, 0, 0);  // calls MPI_Allreduce()
@@ -196,7 +252,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       int resize = 0;
       if (!Parallel())
       {
-         resize = (NV_LENGTH_S(y) != local_size);
+         resize = (N_VGetLength(y) != local_size);
       }
       else
       {
@@ -218,18 +274,18 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
+#ifdef MFEM_USE_CUDA
+      Vector x(local_size, MemoryType::CUDA);
+      SundialsDeviceVector y_content(x);
+#endif
+
       // Temporarly set N_Vector wrapper data to create CVODE. The correct
       // initial condition will be set using CVodeReInit() when Step() is
       // called.
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         MFEM_ABORT("MFEM_USE_CUDA");
-         void *device;
-         CuMemAlloc(&device, sizeof(double)*local_size);
-         //N_VSetDeviceArrayPointer_Cuda(y, device);
-         //N_VSetHostArrayPointer_Cuda(y, new double[local_size]());
-         //N_VResize_Cuda(y, local_size);
+         N_VSetContent_Cuda(y, &y_content);
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
@@ -239,13 +295,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-         double *device;
-         CuMemAlloc(static_cast<void**>(&device), sizeof(double)*local_size));
-         N_VSetDeviceArrayPointer_Cuda(y_loc, device);
-         N_VSetHostArrayPointer_Cuda(y_loc, new double[local_size]());
-         N_VResize_Cuda(y_loc, local_size);
-         N_VResize_MPIPlusX(y, global_size);
-         saved_global_size = global_size;
+         MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
          NV_LOCLENGTH_P(y)  = local_size;
          NV_GLOBLENGTH_P(y) = global_size;
@@ -278,13 +328,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         MFEM_ABORT("MFEM_USE_CUDA + SUNDIALS");
-         double *host = N_VGetHostArrayPointer_Cuda(y);
-         delete [] host;
-         double *device = N_VGetDeviceArrayPointer_Cuda(y);
-         CuMemFree(static_cast<void*>(device));
-         //N_VSetHostArrayPointer_Cuda(y, NULL);
-         //N_VSetDeviceArrayPointer_Cuda(y, NULL);
+         N_VSetContent_Cuda(y, NULL);
 #else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
@@ -294,12 +338,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-         double *host = N_VGetHostArrayPointer_Cuda(y_loc);
-         delete [] host;
-         double *device = N_VGetDeviceArrayPointer_Cuda(y_loc);
-         CuMemFree(static_cast<void*>(device));
-         N_VSetHostArrayPointer_Cuda(y_loc, NULL);
-         N_VSetDeviceArrayPointer_Cuda(y_loc, NULL);
+         MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
          delete [] NV_DATA_P(y);
          NV_DATA_P(y) = NULL;
@@ -317,36 +356,17 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      MFEM_ABORT("MFEM_USE_CUDA + SUNDIALS");
-      if (x.GetMemory().GetMemoryType() == MemoryType::CUDA_UVM)
-      {
-         //N_VSetManagedArrayPointer_Cuda(y, x.HostReadWrite());
-      }
-      else
-      {
-         //N_VSetHostArrayPointer_Cuda(y, x.HostReadWrite());
-         //N_VSetDeviceArrayPointer_Cuda(y, x.ReadWrite());
-      }
-      MFEM_VERIFY(N_VGetLength_Cuda(y) == x.Size(), "");
+      N_VSetContent_Cuda(y, new SundialsDeviceVector(x));
 #else
       NV_DATA_S(y) = x.GetData();
-      MFEM_VERIFY(NV_LENGTH_S(y) == x.Size(), "");
 #endif
+      MFEM_VERIFY(N_VGetLength(y) == x.Size(), "");
    }
    else
    {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-      if (x.GetMemory.GetMemoryType() == MemoryType.CUDA_UVM)
-      {
-         N_VSetManagedArrayPointer_Cuda(y_loc, x.data.HostReadWrite());
-      }
-      else
-      {
-         N_VSetHostArrayPointer_Cuda(y_loc, x.data.HostReadWrite());
-         N_VSetDeviceArrayPointer_Cuda(y_loc x.data.ReadWrite());
-      }
-      MFEM_VERIFY(N_VGetLength_Cuda(y_loc) == x.Size(), "");
+      MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
       NV_DATA_P(y) = x.GetData();
       MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");
@@ -490,10 +510,6 @@ void CVODESolver::PrintInfo() const
 
 CVODESolver::~CVODESolver()
 {
-   if (y_loc)
-   {
-      N_VDestroy(y_loc);
-   }
    N_VDestroy(y);
    SUNMatDestroy(A);
    SUNLinSolFree(LSA);
@@ -623,9 +639,15 @@ ARKStepSolver::ARKStepSolver(Type type)
    : rk_type(type), step_mode(ARK_NORMAL),
      use_implicit(type == IMPLICIT || type == IMEX)
 {
+#ifdef MFEM_USE_CUDA
+   // Allocate an empty cuda N_Vector
+   y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
+   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+#else
    // Allocate an empty serial N_Vector
    y = N_VNewEmpty_Serial(0);
    MFEM_VERIFY(y, "error in N_VNewEmpty_Serial()");
+#endif
 }
 
 #ifdef MFEM_USE_MPI
@@ -635,20 +657,21 @@ ARKStepSolver::ARKStepSolver(MPI_Comm comm, Type type)
 {
    if (comm == MPI_COMM_NULL)
    {
-
+#ifdef MFEM_USE_CUDA
+      // Allocate an empty cuda N_Vector
+      y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
+      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+#else
       // Allocate an empty serial N_Vector
       y = N_VNewEmpty_Serial(0);
       MFEM_VERIFY(y, "error in N_VNewEmpty_Serial()");
-
+#endif
    }
    else
    {
 
 #ifdef MFEM_USE_CUDA
-      // Allocate an MPIPlusX N_Vector and with a CUDA N_Vector underneath it
-      y = N_VMake_MPIPlusX(comm, N_VMake_Cuda(0, NULL,
-                                              NULL));  // calls MPI_Allreduce()
-      MFEM_VERIFY(y, "error in N_VMake_MPIPlusX()");
+      MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
       // Allocate an empty parallel N_Vector
       y = N_VNewEmpty_Parallel(comm, 0, 0);  // calls MPI_Allreduce()
@@ -709,29 +732,35 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
+#ifdef MFEM_USE_CUDA
+      Vector x(local_size, MemoryType::CUDA);
+      SundialsDeviceVector y_content(x);
+#endif
 
       // Temporarly set N_Vector wrapper data to create ARKStep. The correct
       // initial condition will be set using ARKStepReInit() when Step() is
       // called.
       if (!Parallel())
       {
+#ifdef MFEM_USE_CUDA
+         N_VSetContent_Cuda(y, &y_content);
+#else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
+#endif
       }
       else
       {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-         N_VSetArrayPointer_MPIPlusX(new double[local_size](), y); // value-initialize
-         N_VResize_MPIPlusX(y, local_size);
-         saved_global_size  = global_size;
+         MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
          NV_LOCLENGTH_P(y)  = local_size;
          NV_GLOBLENGTH_P(y) = global_size;
          saved_global_size  = global_size;
          NV_DATA_P(y)       = new double[local_size](); // value-initialize
-#endif
-#endif
+#endif // MFEM_USE_CUDA
+#endif // MFEM_USE_MPI
       }
 
       // Create ARKStep memory
@@ -764,21 +793,23 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       // Delete the allocated data in y.
       if (!Parallel())
       {
+#ifdef MFEM_USE_CUDA
+         N_VSetContent_Cuda(y, NULL);
+#else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
+#endif
       }
       else
       {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-         double *y_data = N_VGetArrayPointer_MPIPlusX(y);
-         delete [] y_data;
-         N_VSetArrayPointer_MPIPlusX(NULL, y);
+         MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
          delete [] NV_DATA_P(y);
          NV_DATA_P(y) = NULL;
 #endif
-#endif
+#endif // MFEM_USE_MPI
       }
    }
 
@@ -790,22 +821,18 @@ void ARKStepSolver::Step(Vector &x, double &t, double &dt)
 {
    if (!Parallel())
    {
+#ifdef MFEM_USE_CUDA
+      N_VSetContent_Cuda(y, new SundialsDeviceVector(x));
+#else
       NV_DATA_S(y) = x.GetData();
+#endif
       MFEM_VERIFY(NV_LENGTH_S(y) == x.Size(), "");
    }
    else
    {
 #ifdef MFEM_USE_MPI
 #ifdef MFEM_USE_CUDA
-      N_Vector* x_loc = N_VGetLocalVector_MPIPlusX(x);
-      N_VSetHostArrayPointer_Cuda(x_loc, x.GetMemory().ReadWrite(MemoryClass.HOST,
-                                                                 x.Size()));
-      if (x.GetMemory.GetMemoryType() == MemoryType.CUDA)
-      {
-         N_VSetDeviceArrayPointer_Cuda(x_loc, x.GetMemory().ReadWrite(MemoryClass.CUDA,
-                                                                      x.Size()));
-      }
-      MFEM_VERIFY(N_VGetLength_Cuda(x_loc) == x.Size(), "");
+      MFEM_ABORT("SUNDIALS MPI+CUDA not yet implemented");
 #else
       NV_DATA_P(y) = x.GetData();
       MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");

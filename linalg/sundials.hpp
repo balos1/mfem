@@ -20,6 +20,10 @@
 #include <mpi.h>
 #endif
 
+#ifdef MFEM_USE_CUDA
+#include <nvector/DeviceVectorContent.hpp>
+#endif
+
 #include "ode.hpp"
 #include "solvers.hpp"
 
@@ -41,6 +45,31 @@ namespace mfem
 // Base class for interfacing with SUNDIALS packages
 // ---------------------------------------------------------------------------
 
+#ifdef MFEM_USE_CUDA
+/// Vector interface for SUNDIALS Device (e.g. GPU) vectors.
+class SundialsDeviceVector : public sundials::device::VectorContentInterface<double, long>
+{
+public:
+   // SundialsDeviceVector(int size, MemoryType mt) : x(Vector(size, mt)) {}
+   SundialsDeviceVector(Vector& v) : x(v) {}
+
+   long size() const;
+   double* host();
+   const double* host() const;
+   double* device();
+   const double* device() const;
+   bool isManaged() const;
+   void copyToDev();
+   void copyFromDev();
+
+   static N_Vector MakeEmptySundialsCudaVector();
+   static double VecDot(N_Vector x, N_Vector y);
+
+private:
+   Vector& x;
+};
+#endif
+
 /// Base class for interfacing with SUNDIALS packages.
 class SundialsSolver
 {
@@ -51,7 +80,6 @@ protected:
    long saved_global_size;    ///< Global vector length on last initialization.
 
    N_Vector           y;      ///< State vector.
-   N_Vector           y_loc;  ///< Local state vector, NULL if y is not MPIPlusX.
    SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
    SUNLinearSolver    LSA;    ///< Linear solver for A.
@@ -73,7 +101,7 @@ protected:
    /** @brief Protected constructor: objects of this type should be constructed
        only as part of a derived class. */
    SundialsSolver() : sundials_mem(NULL), flag(0), reinit(false),
-      saved_global_size(0), y(NULL), y_loc(NULL), A(NULL), M(NULL),
+      saved_global_size(0), y(NULL), A(NULL), M(NULL),
       LSA(NULL), LSM(NULL), NLS(NULL) { }
 
 public:
