@@ -50,17 +50,23 @@ namespace mfem
 class SundialsDeviceVector : public sundials::device::VectorContentInterface<double, long>
 {
 public:
-   // SundialsDeviceVector(int size, MemoryType mt) : x(Vector(size, mt)) {}
-   SundialsDeviceVector(Vector& v) : x(v) {}
+   SundialsDeviceVector(Vector& v) : x(v)
+   {
+       if ( x.GetMemory().GetMemoryType() != MemoryType::CUDA ||
+            x.GetMemory().GetMemoryType() != MemoryType::CUDA_UVM )
+        {
+            MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
+        }
+   }
 
-   long size() const;
+   long length() const;
    double* host();
    const double* host() const;
    double* device();
    const double* device() const;
-   bool isManaged() const;
-   void copyToDev();
-   void copyFromDev();
+   SUNMemoryType getMemoryType() const;
+   void copyToDevice();
+   void copyFromDevice();
 
    static N_Vector MakeEmptySundialsCudaVector();
    static double VecDot(N_Vector x, N_Vector y);

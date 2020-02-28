@@ -44,7 +44,7 @@ namespace mfem
 // ---------------------------------------------------------------------------
 
 #ifdef MFEM_USE_GPU
-long SundialsDeviceVector::size() const
+long SundialsDeviceVector::length() const
 {
    return x.Size();
 }
@@ -69,9 +69,15 @@ const double* SundialsDeviceVector::device() const
    return x.Read();
 }
 
-bool SundialsDeviceVector::isManaged() const
+SUNMemoryType SundialsDeviceVector::getMemoryType() const
 {
-   return x.GetMemory().GetMemoryType() == MemoryType::CUDA_UVM;
+   switch(x.GetMemory().GetMemoryType())
+   {
+      case MemoryType::CUDA_UVM:
+         return SUNMEMTYPE_UVM;
+      case MemoryType::CUDA:
+         return SUNMEMTYPE_DEVICE;
+   }
 }
 
 void SundialsDeviceVector::copyToDev()
@@ -285,7 +291,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         N_VSetContent_Cuda(y, &y_content);
+         N_VGiveContent_Cuda(y, &y_content);
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
@@ -327,12 +333,8 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       // Delete the allocated data in y.
       if (!Parallel())
       {
-#ifdef MFEM_USE_CUDA
-         N_VSetContent_Cuda(y, NULL);
-#else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
-#endif
       }
       else
       {
@@ -356,7 +358,7 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      N_VSetContent_Cuda(y, new SundialsDeviceVector(x));
+      N_VGiveContent_Cuda(y, new SundialsDeviceVector(x));
 #else
       NV_DATA_S(y) = x.GetData();
 #endif
@@ -743,7 +745,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         N_VSetContent_Cuda(y, &y_content);
+         N_VGiveContent_Cuda(y, &y_content);
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
@@ -793,12 +795,8 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       // Delete the allocated data in y.
       if (!Parallel())
       {
-#ifdef MFEM_USE_CUDA
-         N_VSetContent_Cuda(y, NULL);
-#else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
-#endif
       }
       else
       {
@@ -822,7 +820,7 @@ void ARKStepSolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      N_VSetContent_Cuda(y, new SundialsDeviceVector(x));
+      N_VGiveContent_Cuda(y, new SundialsDeviceVector(x));
 #else
       NV_DATA_S(y) = x.GetData();
 #endif

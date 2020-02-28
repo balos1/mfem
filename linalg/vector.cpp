@@ -1201,8 +1201,10 @@ void Vector::ToNVector(N_Vector &nv)
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         // MFEM_ASSERT(N_VOwnContent_Cuda(nv) == SUNFALSE, "invalid cuda N_Vector");
-         N_VSetContent_Cuda(nv, new SundialsDeviceVector(*this));
+         // Calling GiveContent will result in ownership of the content object
+         // to the N_Vector. When N_VDestroy is called, the content will be
+         // deleted.
+         N_VGiveContent_Cuda(nv, new SundialsDeviceVector(*this));
          break;
 #endif
 #ifdef MFEM_USE_MPI
