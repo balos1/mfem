@@ -43,7 +43,7 @@ namespace mfem
 // SUNDIALS DeviceVector interface functions
 // ---------------------------------------------------------------------------
 
-#ifdef MFEM_USE_GPU
+#ifdef MFEM_USE_CUDA
 long SundialsDeviceVector::length() const
 {
    return x.Size();
@@ -71,21 +71,27 @@ const double* SundialsDeviceVector::device() const
 
 SUNMemoryType SundialsDeviceVector::getMemoryType() const
 {
+   SUNMemoryType type;
    switch(x.GetMemory().GetMemoryType())
    {
-      case MemoryType::CUDA_UVM:
-         return SUNMEMTYPE_UVM;
-      case MemoryType::CUDA:
-         return SUNMEMTYPE_DEVICE;
+      case MemoryType::MANAGED:
+         type = SUNMEMTYPE_UVM;
+         break;
+      case MemoryType::DEVICE:
+         type = SUNMEMTYPE_DEVICE;
+         break;
+      default:
+         MFEM_ABORT("SundialsDeviceVector does not support the memory type\n");
    }
+   return type;
 }
 
-void SundialsDeviceVector::copyToDev()
+void SundialsDeviceVector::copyToDevice()
 {
    return x.GetMemory().CopyFromHost(x.HostRead(), x.Size());
 }
 
-void SundialsDeviceVector::copyFromDev()
+void SundialsDeviceVector::copyFromDevice()
 {
    return x.GetMemory().CopyToHost(x.HostReadWrite(), x.Size());
 }
@@ -281,7 +287,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size, MemoryType::CUDA);
+      Vector x(local_size, MemoryType::DEVICE);
       SundialsDeviceVector y_content(x);
 #endif
 
@@ -735,7 +741,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size, MemoryType::CUDA);
+      Vector x(local_size, MemoryType::DEVICE);
       SundialsDeviceVector y_content(x);
 #endif
 
