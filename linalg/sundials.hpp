@@ -52,8 +52,7 @@ class SundialsDeviceVector : public sundials::device::VectorContentInterface<dou
 public:
    SundialsDeviceVector(Vector& v) : x(v)
    {
-       if ( x.GetMemory().GetMemoryType() != MemoryType::DEVICE ||
-            x.GetMemory().GetMemoryType() != MemoryType::MANAGED )
+       if ( !IsDeviceMemory(x.GetMemory().GetMemoryType()) )
         {
             MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
         }
