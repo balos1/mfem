@@ -121,7 +121,7 @@ N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
 // ---------------------------------------------------------------------------
 
 // Return the matrix ID
-static SUNMatrix_ID MatGetID(SUNMatrix A)
+static SUNMatrix_ID MatGetID(SUNMatrix)
 {
    return (SUNMATRIX_CUSTOM);
 }
@@ -139,7 +139,7 @@ static void MatDestroy(SUNMatrix A)
 // ---------------------------------------------------------------------------
 
 // Return the linear solver type
-static SUNLinearSolver_Type LSGetType(SUNLinearSolver LS)
+static SUNLinearSolver_Type LSGetType(SUNLinearSolver)
 {
    return (SUNLINEARSOLVER_MATRIX_ITERATIVE);
 }
@@ -159,14 +159,17 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
+   dbg("");
    // Get data from N_Vectors
-   const Vector mfem_y(NV_DATA_S(y), NV_LENGTH_S(y));
+   const Vector mfem_y(y);//NV_DATA_S(y), NV_LENGTH_S(y));
    dbg("y: %p %d", NV_DATA_S(y), NV_LENGTH_S(y));
-   mfem_y.UseDevice(true);
+   //MFEM_VERIFY(mm.IsKnown(mfem_y.HostRead()),"");
+   //mfem_y.UseDevice(true);
    //mfem_y = 0.0;
-   Vector mfem_ydot(NV_DATA_S(ydot), NV_LENGTH_S(ydot));
+   Vector mfem_ydot(ydot);//NV_DATA_S(ydot), NV_LENGTH_S(ydot));
    dbg("ydot: %p %d", NV_DATA_S(y), NV_LENGTH_S(y));
-   mfem_ydot.UseDevice(true);
+   //MFEM_VERIFY(mm.IsKnown(mfem_ydot.HostReadWrite()),"");
+   //mfem_ydot.UseDevice(true);
    //mfem_ydot = 0.0;
    //const Vector mfem_y(y); //mfem_y.UseDevice(true);
    //Vector mfem_ydot(ydot); //mfem_ydot .UseDevice(true);
@@ -177,19 +180,19 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    self->f->SetTime(t);
    self->f->Mult(mfem_y, mfem_ydot);
 
+   dbg("done");
    // Return success
    return (0);
 }
 
 int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
-                             booleantype jok, booleantype *jcur,
-                             realtype gamma, void *user_data, N_Vector tmp1,
-                             N_Vector tmp2, N_Vector tmp3)
+                             booleantype jok, booleantype *jcur, realtype gamma,
+                             void*, N_Vector, N_Vector, N_Vector)
 {
    dbg("");
    // Get data from N_Vectors
-   const Vector mfem_y(NV_DATA_S(y), NV_LENGTH_S(y));
-   const Vector mfem_fy(NV_DATA_S(fy), NV_LENGTH_S(fy));
+   const Vector mfem_y(y);//NV_DATA_S(y), NV_LENGTH_S(y));
+   const Vector mfem_fy(fy);//NV_DATA_S(fy), NV_LENGTH_S(fy));
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(A));
    dbg("f.mc:%d",self->f->GetMemoryClass());
    // Compute the linear system
@@ -197,14 +200,14 @@ int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
    return (self->f->SUNImplicitSetup(mfem_y, mfem_fy, jok, jcur, gamma));
 }
 
-int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix A, N_Vector x,
+int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                              N_Vector b, realtype tol)
 {
    dbg("");
-   //Vector mfem_x(x);
-   Vector mfem_x(NV_DATA_S(x), NV_LENGTH_S(x));
-   //const Vector mfem_b(b);
-   const Vector mfem_b(NV_DATA_S(b), NV_LENGTH_S(b));
+   Vector mfem_x(x);
+   //Vector mfem_x(NV_DATA_S(x), NV_LENGTH_S(x));
+   const Vector mfem_b(b);
+   //const Vector mfem_b(NV_DATA_S(b), NV_LENGTH_S(b));
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(LS));
    dbg("f.mc:%d",self->f->GetMemoryClass());
 
@@ -323,11 +326,11 @@ void CVODESolver::Init(TimeDependentOperator &f_)
          N_VGiveContent_Cuda(y, &y_content);
 #else
          NV_LENGTH_S(y) = local_size;
-         //NV_DATA_S(y)   = new double[local_size](); // value-initialize
-         NV_DATA_S(y)   = Memory<double>(local_size); // value-initialize
-         Vector(NV_DATA_S(y), NV_LENGTH_S(y)) = 0.0;
-         dbg("GetHostMemoryType:%d", MemoryManager::GetHostMemoryType());
-         dbg("\033[32m%p = Memory<double>(%d)", NV_DATA_S(y), NV_LENGTH_S(y));
+         NV_DATA_S(y)   = new double[local_size](); // value-initialize
+         //NV_DATA_S(y)   = Memory<double>(local_size); // value-initialize
+         //Vector(NV_DATA_S(y), NV_LENGTH_S(y)) = 0.0;
+         //dbg("GetHostMemoryType:%d", MemoryManager::GetHostMemoryType());
+         //dbg("\033[32m%p = Memory<double>(%d)", NV_DATA_S(y), NV_LENGTH_S(y));
 #endif
       }
       else
@@ -388,17 +391,19 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
    // Set the reinit flag to call CVodeReInit() in the next Step() call.
    reinit = true;
+   dbg("Init done");
 }
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   dbg("mem_type:%d",mem_type);
+   dbg("mem_type:%d, x:%p", mem_type, x.Read());
+   MFEM_VERIFY(mm.IsKnown(x.HostRead()),"");
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
       N_VGiveContent_Cuda(y, new SundialsDeviceVector(x));
 #else
-      NV_DATA_S(y) = (realtype*) x.Read();
+      NV_DATA_S(y) = x.ReadWrite();
 #endif
       MFEM_VERIFY(N_VGetLength(y) == x.Size(), "");
    }
@@ -425,7 +430,7 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
       dbg("mem_type:%d",mem_type);
    }
 
-   // Integrate the system
+   dbg("Integrate the system");
    double tout = t + dt;
    flag = CVode(sundials_mem, tout, y, &t, step_mode);
    MFEM_VERIFY(flag >= 0, "error in CVode()");
@@ -434,6 +439,9 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    flag = CVodeGetLastStep(sundials_mem, &dt);
    MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeGetLastStep()");
    dbg("mem_type:%d",mem_type);
+   Vector y_m(y);
+   //y_m.Print();
+   dbg("done");
 }
 
 void CVODESolver::UseMFEMLinearSolver()
@@ -482,6 +490,7 @@ void CVODESolver::UseSundialsLinearSolver()
    // Attach linear solver
    flag = CVodeSetLinearSolver(sundials_mem, LSA, NULL);
    MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeSetLinearSolver()");
+   dbg("done");
 }
 
 void CVODESolver::SetStepMode(int itask)
@@ -606,9 +615,9 @@ int ARKStepSolver::RHS2(realtype t, const N_Vector y, N_Vector ydot,
 }
 
 int ARKStepSolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
-                               SUNMatrix M, booleantype jok, booleantype *jcur,
-                               realtype gamma, void *user_data, N_Vector tmp1,
-                               N_Vector tmp2, N_Vector tmp3)
+                               SUNMatrix, booleantype jok, booleantype *jcur,
+                               realtype gamma,
+                               void*, N_Vector, N_Vector, N_Vector)
 {
    dbg("");
    // Get data from N_Vectors
@@ -625,7 +634,7 @@ int ARKStepSolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
    return (self->f->SUNImplicitSetup(mfem_y, mfem_fy, jok, jcur, gamma));
 }
 
-int ARKStepSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix A, N_Vector x,
+int ARKStepSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                                N_Vector b, realtype tol)
 {
    dbg("");
@@ -641,8 +650,8 @@ int ARKStepSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix A, N_Vector x,
    return (self->f->SUNImplicitSolve(mfem_b, mfem_x, tol));
 }
 
-int ARKStepSolver::MassSysSetup(realtype t, SUNMatrix M, void *user_data,
-                                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)
+int ARKStepSolver::MassSysSetup(realtype t, SUNMatrix M,
+                                void*, N_Vector, N_Vector, N_Vector)
 {
    dbg("");
    ARKStepSolver *self = static_cast<ARKStepSolver*>(GET_CONTENT(M));
@@ -652,7 +661,7 @@ int ARKStepSolver::MassSysSetup(realtype t, SUNMatrix M, void *user_data,
    return (self->f->SUNMassSetup());
 }
 
-int ARKStepSolver::MassSysSolve(SUNLinearSolver LS, SUNMatrix M, N_Vector x,
+int ARKStepSolver::MassSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                                 N_Vector b, realtype tol)
 {
    dbg("");
@@ -1179,8 +1188,8 @@ int KINSolver::GradientMult(N_Vector v, N_Vector Jv, N_Vector u,
 }
 
 // Wrapper for evaluating linear systems J u = b
-int KINSolver::LinSysSetup(N_Vector u, N_Vector fu, SUNMatrix J,
-                           void *user_data, N_Vector tmp1, N_Vector tmp2)
+int KINSolver::LinSysSetup(N_Vector u, N_Vector, SUNMatrix J,
+                           void *, N_Vector , N_Vector )
 {
    dbg("");
    const Vector mfem_u(u);
@@ -1197,8 +1206,8 @@ int KINSolver::LinSysSetup(N_Vector u, N_Vector fu, SUNMatrix J,
 }
 
 // Wrapper for solving linear systems J u = b
-int KINSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix J, N_Vector u,
-                           N_Vector b, realtype tol)
+int KINSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector u,
+                           N_Vector b, realtype)
 {
    dbg("");
    Vector mfem_u(u), mfem_b(b);
@@ -1453,7 +1462,7 @@ void KINSolver::SetMAA(int m_aa)
 }
 
 // Compute the scaling vectors and solve nonlinear system
-void KINSolver::Mult(const Vector &b, Vector &x) const
+void KINSolver::Mult(const Vector&, Vector &x) const
 {
    dbg("");
    // residual norm tolerance
