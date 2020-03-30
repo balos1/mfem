@@ -47,16 +47,17 @@ namespace mfem
 
 #ifdef MFEM_USE_CUDA
 /// Vector interface for SUNDIALS Device (e.g. GPU) vectors.
-class SundialsDeviceVector : public sundials::device::VectorContentInterface<double, long>
+class SundialsDeviceVector : public
+   sundials::device::VectorContentInterface<double, long>
 {
 public:
    SundialsDeviceVector(Vector& v) : x(v)
    {
-       if ( x.GetMemory().GetMemoryType() != MemoryType::DEVICE ||
-            x.GetMemory().GetMemoryType() != MemoryType::MANAGED )
-        {
-            MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
-        }
+      if ( x.GetMemory().GetMemoryType() != MemoryType::DEVICE ||
+           x.GetMemory().GetMemoryType() != MemoryType::MANAGED )
+      {
+         MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
+      }
    }
 
    long length() const;
@@ -86,7 +87,8 @@ protected:
    long saved_global_size;    ///< Global vector length on last initialization.
 
    N_Vector           y;      ///< State vector.
-   SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
+   SUNMatrix
+   A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
    SUNLinearSolver    LSA;    ///< Linear solver for A.
    SUNLinearSolver    LSM;    ///< Linear solver for M.
@@ -221,6 +223,7 @@ public:
 
    /// Destroy the associated CVODE memory and SUNDIALS objects.
    virtual ~CVODESolver();
+
 };
 
 
@@ -394,6 +397,10 @@ public:
 
    /// Destroy the associated ARKode memory and SUNDIALS objects.
    virtual ~ARKStepSolver();
+
+   virtual MemoryClass GetMemoryClass() const
+   { return Device::GetMemoryClass(); }
+
 };
 
 

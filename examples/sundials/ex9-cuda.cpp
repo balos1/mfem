@@ -135,6 +135,8 @@ public:
    virtual void ImplicitSolve(const double dt, const Vector &x, Vector &k);
 
    virtual ~FE_Evolution();
+
+   MemoryClass GetMemoryClass() const { return Device::GetMemoryClass(); }
 };
 
 
@@ -273,7 +275,7 @@ int main(int argc, char *argv[])
    b.Assemble();
    m.Finalize();
    k.Finalize(skip_zeros);
-   
+
    // 6. Define the initial conditions, save the corresponding grid function to
    //    a file and (optionally) save data in the VisIt format and initialize
    //    GLVis visualization.
