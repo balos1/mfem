@@ -309,7 +309,8 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size, MemoryType::DEVICE);
+      Vector x(local_size);
+      x.UseDevice(true);
       SundialsDeviceVector y_content(x);
 #endif
 
@@ -787,7 +788,8 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size, MemoryType::DEVICE);
+      Vector x(local_size);
+      x.UseDevice(true);
       SundialsDeviceVector y_content(x);
 #endif
 

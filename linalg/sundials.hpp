@@ -53,12 +53,10 @@ class SundialsDeviceVector : public
 public:
    SundialsDeviceVector(Vector& v) : x(v)
    {
-      x.UseDevice(true);
-      if ( x.GetMemory().GetMemoryType() != MemoryType::DEVICE ||
-           x.GetMemory().GetMemoryType() != MemoryType::MANAGED )
-      {
-         MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
-      }
+       if ( !IsDeviceMemory(x.GetMemory().GetMemoryType()) )
+        {
+            MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
+        }
    }
 
    long length() const;
