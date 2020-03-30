@@ -9,8 +9,8 @@
 // terms of the BSD-3 license. We welcome feedback and contributions, see file
 // CONTRIBUTING.md for details.
 
-//#include "../../dbg.hpp"
-#define dbg(...)
+#include "../general/dbg.hpp"
+//#define dbg(...)
 
 #include "sundials.hpp"
 
@@ -101,8 +101,10 @@ void SundialsDeviceVector::copyFromDevice()
 
 double SundialsDeviceVector::VecDot(N_Vector nvecx, N_Vector nvecy)
 {
-   Vector x = Vector(nvecx);
-   Vector y = Vector(nvecy);
+   //Vector x = Vector(nvecx);
+   Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
+   //Vector y = Vector(nvecy);
+   Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
    return x * y;
 }
 
@@ -320,11 +322,11 @@ void CVODESolver::Init(TimeDependentOperator &f_)
          N_VGiveContent_Cuda(y, &y_content);
 #else
          NV_LENGTH_S(y) = local_size;
-         NV_DATA_S(y)   = new double[local_size](); // value-initialize
-         //NV_DATA_S(y)   = Memory<double>(local_size); // value-initialize
-         //Vector(NV_DATA_S(y), NV_LENGTH_S(y)) = 0.0;
-         //dbg("GetHostMemoryType:%d", MemoryManager::GetHostMemoryType());
-         //dbg("\033[32m%p = Memory<double>(%d)", NV_DATA_S(y), NV_LENGTH_S(y));
+         //NV_DATA_S(y)   = new double[local_size](); // value-initialize
+         NV_DATA_S(y)   = Memory<double>(local_size); // value-initialize
+         Vector(NV_DATA_S(y), NV_LENGTH_S(y)) = 0.0;
+         dbg("GetHostMemoryType:%d", MemoryManager::GetHostMemoryType());
+         dbg("\033[32m%p = Memory<double>(%d)", NV_DATA_S(y), NV_LENGTH_S(y));
 #endif
       }
       else

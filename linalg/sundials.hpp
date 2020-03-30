@@ -53,6 +53,7 @@ class SundialsDeviceVector : public
 public:
    SundialsDeviceVector(Vector& v) : x(v)
    {
+      x.UseDevice(true);
       if ( x.GetMemory().GetMemoryType() != MemoryType::DEVICE ||
            x.GetMemory().GetMemoryType() != MemoryType::MANAGED )
       {
