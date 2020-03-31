@@ -12,6 +12,7 @@
 #ifndef MFEM_SUNDIALS
 #define MFEM_SUNDIALS
 
+#include "../general/dbg.hpp"
 #include "../config/config.hpp"
 
 #ifdef MFEM_USE_SUNDIALS
@@ -53,10 +54,16 @@ class SundialsDeviceVector : public
 public:
    SundialsDeviceVector(Vector& v) : x(v)
    {
-       if ( !IsDeviceMemory(x.GetMemory().GetMemoryType()) )
-        {
-            MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
-        }
+      dbg("x:%p, %d", x.HostRead(), x.Size());
+      //MemoryType mt = Device::GetHostMemoryType();
+      //Memory<double>(x.HostReadWrite(), x.Size(), mt, true);
+      x.Read();
+      // GetMemoryType only return d_mt when flags are valid
+      dbg("x.mt:%d", x.GetMemory().GetMemoryType());
+      if ( !IsDeviceMemory(v.GetMemory().GetMemoryType()))
+      {
+         MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
+      }
    }
 
    long length() const;

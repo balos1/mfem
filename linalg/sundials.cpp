@@ -49,31 +49,37 @@ namespace mfem
 #ifdef MFEM_USE_CUDA
 long SundialsDeviceVector::length() const
 {
+   dbg("");
    return x.Size();
 }
 
 double* SundialsDeviceVector::host()
 {
+   dbg("");
    return x.HostReadWrite();
 }
 
 const double* SundialsDeviceVector::host() const
 {
+   dbg("");
    return x.HostRead();
 }
 
 double* SundialsDeviceVector::device()
 {
+   dbg("");
    return x.ReadWrite();
 }
 
 const double* SundialsDeviceVector::device() const
 {
+   dbg("");
    return x.Read();
 }
 
 SUNMemoryType SundialsDeviceVector::getMemoryType() const
 {
+   dbg("");
    SUNMemoryType type;
    switch (x.GetMemory().GetMemoryType())
    {
@@ -91,25 +97,29 @@ SUNMemoryType SundialsDeviceVector::getMemoryType() const
 
 void SundialsDeviceVector::copyToDevice()
 {
+   dbg("");
    return x.GetMemory().CopyFromHost(x.HostRead(), x.Size());
 }
 
 void SundialsDeviceVector::copyFromDevice()
 {
+   dbg("");
    return x.GetMemory().CopyToHost(x.HostReadWrite(), x.Size());
 }
 
 double SundialsDeviceVector::VecDot(N_Vector nvecx, N_Vector nvecy)
 {
-   //Vector x = Vector(nvecx);
-   Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
-   //Vector y = Vector(nvecy);
-   Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
+   dbg("");
+   Vector x = Vector(nvecx);
+   //Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
+   Vector y = Vector(nvecy);
+   //Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
    return x * y;
 }
 
 N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
 {
+   dbg("");
    N_Vector nvecx = N_VNewEmpty_Cuda();
    nvecx->ops->nvdotprod = SundialsDeviceVector::VecDot;
    return nvecx;
@@ -265,6 +275,13 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    // Initialize the base class
    ODESolver::Init(f_);
    dbg("mem_type:%d", mem_type);
+
+   if (false)
+   {
+      Vector v(3072);
+      Memory<double>(v.ReadWrite(), v.Size(), mem_type, true);
+
+   }
 
    // Get the vector length
    long local_size = f_.Height();
