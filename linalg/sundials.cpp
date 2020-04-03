@@ -48,8 +48,7 @@ namespace mfem
 
 #ifdef MFEM_USE_CUDA
 SundialsDeviceVector::SundialsDeviceVector() : Vector()
-{
-}
+{}
 
 SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s)
 {}
@@ -120,6 +119,12 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
+   // At this point the up-to-date data (which was allocated by sundials) for N_Vector y and ydot is on the device.
+   // The host array pointer is out of date unless we call N_VCopyFromDevice_Cuda.
+#ifdef MFEM_USE_CUDA
+   N_VCopyFromDevice_Cuda(y);
+   N_VCopyFromDevice_Cuda(ydot);
+#endif
    const Vector mfem_y(y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
    Vector mfem_ydot(ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
 
@@ -132,6 +137,13 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    // Compute y' = f(t, y)
    self->f->SetTime(t);
    self->f->Mult(mfem_y, mfem_ydot);
+
+#ifdef MFEM_USE_CUDA
+   // mfem_ydot.ToNVector(y); // cannot do this because mfem_ydot will go out of scope taking the data with it
+   // Since MFEM is not using the ydot device pointer underneath mfem_ydot, we have to copy from the host.
+   // Is the mfem_ydot data coherent across the host and device after calling Mult???
+   N_VCopyToDevice_Cuda(ydot);
+#endif
 
    dbg("done");
    // Return success

@@ -1169,10 +1169,10 @@ Vector::Vector(N_Vector nv)
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
          dbg("SetDataAndSize(%p, %d)", N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv));
-         if (!N_VIsManagedMemory_Cuda(nv))
-         {
-            N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
-         }
+         // if (!N_VIsManagedMemory_Cuda(nv))
+         // {
+         //    N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
+         // }
          SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv)); // how do we set the device data??
          UseDevice(true);
          break;
