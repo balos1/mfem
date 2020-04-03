@@ -21,7 +21,7 @@
 #endif
 
 #ifdef MFEM_USE_CUDA
-#include <nvector/DeviceVectorContent.hpp>
+#include <nvector/nvector_cuda.h>
 #endif
 
 #include "ode.hpp"
@@ -47,31 +47,16 @@ namespace mfem
 
 #ifdef MFEM_USE_CUDA
 /// Vector interface for SUNDIALS Device (e.g. GPU) vectors.
-class SundialsDeviceVector : public sundials::device::VectorContentInterface<double, long>
+class SundialsDeviceVector : public Vector
 {
 public:
-   SundialsDeviceVector(Vector& v) : x(v)
-   {
-       if ( !IsDeviceMemory(x.GetMemory().GetMemoryType()) )
-        {
-            MFEM_ABORT("Invalid MemoryType for a SundialsDeviceVector!");
-        }
-   }
-
-   long length() const;
-   double* host();
-   const double* host() const;
-   double* device();
-   const double* device() const;
-   SUNMemoryType getMemoryType() const;
-   void copyToDevice();
-   void copyFromDevice();
+   SundialsDeviceVector();
+   SundialsDeviceVector(int s);
+   SundialsDeviceVector(double *wrap, int s);
+   SundialsDeviceVector(Vector &x);
 
    static N_Vector MakeEmptySundialsCudaVector();
-   static double VecDot(N_Vector x, N_Vector y);
-
-private:
-   Vector& x;
+   static double NvecDot(N_Vector x, N_Vector y);
 };
 #endif
 

@@ -44,59 +44,18 @@ namespace mfem
 // ---------------------------------------------------------------------------
 
 #ifdef MFEM_USE_CUDA
-long SundialsDeviceVector::length() const
+SundialsDeviceVector::SundialsDeviceVector() : Vector()
 {
-   return x.Size();
 }
 
-double* SundialsDeviceVector::host()
-{
-   return x.HostReadWrite();
-}
+SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s)
+{}
 
-const double* SundialsDeviceVector::host() const
-{
-   return x.HostRead();
-}
+SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s)
+   : Vector(wrap, s)
+{}
 
-double* SundialsDeviceVector::device()
-{
-   return x.ReadWrite();
-}
-
-const double* SundialsDeviceVector::device() const
-{
-   return x.Read();
-}
-
-SUNMemoryType SundialsDeviceVector::getMemoryType() const
-{
-   SUNMemoryType type;
-   switch(x.GetMemory().GetMemoryType())
-   {
-      case MemoryType::MANAGED:
-         type = SUNMEMTYPE_UVM;
-         break;
-      case MemoryType::DEVICE:
-         type = SUNMEMTYPE_DEVICE;
-         break;
-      default:
-         MFEM_ABORT("SundialsDeviceVector does not support the memory type\n");
-   }
-   return type;
-}
-
-void SundialsDeviceVector::copyToDevice()
-{
-   return x.GetMemory().CopyFromHost(x.HostRead(), x.Size());
-}
-
-void SundialsDeviceVector::copyFromDevice()
-{
-   return x.GetMemory().CopyToHost(x.HostReadWrite(), x.Size());
-}
-
-double SundialsDeviceVector::VecDot(N_Vector nvecx, N_Vector nvecy)
+double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
 {
    Vector x = Vector(nvecx);
    Vector y = Vector(nvecy);
@@ -106,10 +65,10 @@ double SundialsDeviceVector::VecDot(N_Vector nvecx, N_Vector nvecy)
 N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
 {
    N_Vector nvecx = N_VNewEmpty_Cuda();
-   nvecx->ops->nvdotprod = SundialsDeviceVector::VecDot;
+   nvecx->ops->nvdotprod = SundialsDeviceVector::NvecDot;
    return nvecx;
 }
-#endif
+#endif // MFEM_USE_CUDA
 
 // ---------------------------------------------------------------------------
 // SUNMatrix interface functions
@@ -287,9 +246,8 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size);
-      x.UseDevice(true);
-      SundialsDeviceVector y_content(x);
+      SundialsDeviceVector mfem_y(local_size);
+      mfem_y.UseDevice(true);
 #endif
 
       // Temporarly set N_Vector wrapper data to create CVODE. The correct
@@ -298,7 +256,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         N_VGiveContent_Cuda(y, &y_content);
+         mfem_y.ToNVector(y);
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
@@ -340,8 +298,12 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       // Delete the allocated data in y.
       if (!Parallel())
       {
+#ifdef MFEM_USE_CUDA
+         // Do nothing.
+#else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
+#endif
       }
       else
       {
@@ -365,7 +327,10 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      N_VGiveContent_Cuda(y, new SundialsDeviceVector(x));
+      // y->content->host_data = x.HostReadWrite();
+      // y->content->device_data = x.ReadWrite();
+      // y->content->length = x.Size();
+      x.ToNVector(y);
 #else
       NV_DATA_S(y) = x.GetData();
 #endif
@@ -742,9 +707,8 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
-      Vector x(local_size);
-      x.UseDevice(true);
-      SundialsDeviceVector y_content(x);
+      SundialsDeviceVector mfem_y(local_size);
+      mfem_y.UseDevice(true);
 #endif
 
       // Temporarly set N_Vector wrapper data to create ARKStep. The correct
@@ -753,7 +717,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       if (!Parallel())
       {
 #ifdef MFEM_USE_CUDA
-         N_VGiveContent_Cuda(y, &y_content);
+         mfem_y.ToNVector(y);
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
@@ -828,7 +792,7 @@ void ARKStepSolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      N_VGiveContent_Cuda(y, new SundialsDeviceVector(x));
+      x.ToNVector(y);
 #else
       NV_DATA_S(y) = x.GetData();
 #endif

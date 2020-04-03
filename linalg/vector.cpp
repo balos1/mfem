@@ -1193,13 +1193,6 @@ void Vector::ToNVector(N_Vector &nv)
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
 
-#ifdef MFEM_USE_MPI
-   if (nvid == SUNDIALS_NVEC_MPIPLUSX)
-   {
-      nvid = N_VGetVectorID(N_VGetLocalVector_MPIPlusX(nv));
-   }
-#endif
-
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
@@ -1209,10 +1202,10 @@ void Vector::ToNVector(N_Vector &nv)
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         // Calling GiveContent will result in ownership of the content object
-         // to the N_Vector. When N_VDestroy is called, the content will be
-         // deleted.
-         N_VGiveContent_Cuda(nv, new SundialsDeviceVector(*this));
+         MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE, "invalid serial N_Vector");
+         ((N_VectorContent_Cuda)nv->content)->host_data = HostReadWrite();
+         ((N_VectorContent_Cuda)nv->content)->device_data = ReadWrite();
+         ((N_VectorContent_Cuda)nv->content)->length = size;
          break;
 #endif
 #ifdef MFEM_USE_MPI
