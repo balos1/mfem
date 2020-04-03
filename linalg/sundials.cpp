@@ -62,9 +62,8 @@ double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
 {
    dbg("");
    Vector x = Vector(nvecx);
-   //Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
    Vector y = Vector(nvecy);
-   //Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
+   dbg("x.mt:%d", x.GetMemory().GetMemoryType());
    return x * y;
 }
 
@@ -121,22 +120,15 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
-   // Get data from N_Vectors
-   const Vector mfem_y(y);//NV_DATA_S(y), NV_LENGTH_S(y));
-   dbg("y: %p %d", NV_DATA_S(y), NV_LENGTH_S(y));
-   //MFEM_VERIFY(mm.IsKnown(mfem_y.HostRead()),"");
-   //mfem_y.UseDevice(true);
-   //mfem_y = 0.0;
-   Vector mfem_ydot(ydot);//NV_DATA_S(ydot), NV_LENGTH_S(ydot));
-   dbg("ydot: %p %d", NV_DATA_S(y), NV_LENGTH_S(y));
-   //MFEM_VERIFY(mm.IsKnown(mfem_ydot.HostReadWrite()),"");
-   //mfem_ydot.UseDevice(true);
-   //mfem_ydot = 0.0;
-   //const Vector mfem_y(y); //mfem_y.UseDevice(true);
-   //Vector mfem_ydot(ydot); //mfem_ydot .UseDevice(true);
+   const Vector mfem_y(y);
+   Vector mfem_ydot(ydot);
+
+   dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
+   dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
    dbg("f.mc:%d",self->f->GetMemoryClass());
+
    // Compute y' = f(t, y)
    self->f->SetTime(t);
    self->f->Mult(mfem_y, mfem_ydot);
@@ -152,10 +144,15 @@ int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
 {
    dbg("");
    // Get data from N_Vectors
-   const Vector mfem_y(y);//NV_DATA_S(y), NV_LENGTH_S(y));
-   const Vector mfem_fy(fy);//NV_DATA_S(fy), NV_LENGTH_S(fy));
+   const Vector mfem_y(y);
+   const Vector mfem_fy(fy);
+
+   dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
+   dbg("mfem_ydot.mt:%d", mfem_fy.GetMemory().GetMemoryType());
+
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(A));
    dbg("f.mc:%d",self->f->GetMemoryClass());
+
    // Compute the linear system
    self->f->SetTime(t);
    return (self->f->SUNImplicitSetup(mfem_y, mfem_fy, jok, jcur, gamma));
@@ -166,9 +163,11 @@ int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
 {
    dbg("");
    Vector mfem_x(x);
-   //Vector mfem_x(NV_DATA_S(x), NV_LENGTH_S(x));
    const Vector mfem_b(b);
-   //const Vector mfem_b(NV_DATA_S(b), NV_LENGTH_S(b));
+
+   dbg("mfem_y.mt:%d", mfem_x.GetMemory().GetMemoryType());
+   dbg("mfem_ydot.mt:%d", mfem_b.GetMemory().GetMemoryType());
+
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(LS));
    dbg("f.mc:%d",self->f->GetMemoryClass());
 
@@ -231,7 +230,6 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    {
       Vector v(3072);
       Memory<double>(v.ReadWrite(), v.Size(), mem_type, true);
-
    }
 
    // Get the vector length

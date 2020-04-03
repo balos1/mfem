@@ -1163,16 +1163,18 @@ Vector::Vector(N_Vector nv)
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
-         dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
+         // dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
+         dbg("SetDataAndSize(%p, %d)", N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv));
          if (!N_VIsManagedMemory_Cuda(nv))
          {
             N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
          }
-         SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv));
+         SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv)); // how do we set the device data??
+         UseDevice(true);
          break;
 #endif
 #ifdef MFEM_USE_MPI
@@ -1193,9 +1195,9 @@ Vector::Vector(N_Vector nv)
 
 void Vector::ToNVector(N_Vector &nv)
 {
-   dbg("");
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
+   dbg("%d", nvid);
 
    switch (nvid)
    {
