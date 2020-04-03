@@ -12,6 +12,7 @@
 #ifndef MFEM_SUNDIALS
 #define MFEM_SUNDIALS
 
+#include "../general/dbg.hpp"
 #include "../config/config.hpp"
 
 #ifdef MFEM_USE_SUNDIALS

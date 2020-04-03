@@ -60,15 +60,17 @@ SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s)
 
 double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
 {
-   //Vector x = Vector(nvecx);
-   Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
-   //Vector y = Vector(nvecy);
-   Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
+   dbg("");
+   Vector x = Vector(nvecx);
+   //Vector x(NV_DATA_S(nvecx), NV_LENGTH_S(nvecx));
+   Vector y = Vector(nvecy);
+   //Vector y(NV_DATA_S(nvecy), NV_LENGTH_S(nvecy));
    return x * y;
 }
 
 N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
 {
+   dbg("");
    N_Vector nvecx = N_VNewEmpty_Cuda();
    nvecx->ops->nvdotprod = SundialsDeviceVector::NvecDot;
    return nvecx;
@@ -224,6 +226,13 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    // Initialize the base class
    ODESolver::Init(f_);
    dbg("mem_type:%d", mem_type);
+
+   if (false)
+   {
+      Vector v(3072);
+      Memory<double>(v.ReadWrite(), v.Size(), mem_type, true);
+
+   }
 
    // Get the vector length
    long local_size = f_.Height();

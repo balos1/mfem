@@ -284,7 +284,8 @@ int main(int argc, char *argv[])
    u = 0.0;
    dbg("u:%p", u.HostRead());
    //mm.PrintPtrs();
-   MFEM_VERIFY(mm.IsKnown(u.HostRead()),"");
+   if (strcmp(device_config, "cpu") != 0)
+   { MFEM_VERIFY(mm.IsKnown(u.HostRead()),""); }
 
    u.ProjectCoefficient(u0);
 
