@@ -35,6 +35,7 @@
 //               solution. The saving of time-dependent data files for external
 //               visualization with VisIt (visit.llnl.gov) is illustrated.
 
+#include "../../general/dbg.hpp"
 #include "mfem.hpp"
 #include <fstream>
 #include <iostream>
@@ -147,12 +148,12 @@ int main(int argc, char *argv[])
    const char *mesh_file = "../../data/periodic-hexagon.mesh";
    int ref_levels = 2;
    int order = 3;
-   bool pa = false;
+   bool pa = true;
    const char *device_config = "cpu";
    int ode_solver_type = 7;
    double t_final = 10.0;
    double dt = 0.01;
-   bool visualization = true;
+   bool visualization = false;
    bool visit = false;
    bool binary = false;
    int vis_steps = 5;
@@ -275,11 +276,16 @@ int main(int argc, char *argv[])
    b.Assemble();
    m.Finalize();
    k.Finalize(skip_zeros);
-   
+
    // 6. Define the initial conditions, save the corresponding grid function to
    //    a file and (optionally) save data in the VisIt format and initialize
    //    GLVis visualization.
    GridFunction u(&fes);
+   u = 0.0;
+   dbg("u:%p", u.HostRead());
+   //mm.PrintPtrs();
+   MFEM_VERIFY(mm.IsKnown(u.HostRead()),"");
+
    u.ProjectCoefficient(u0);
 
    {

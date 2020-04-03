@@ -11,6 +11,7 @@
 
 // Implementation of data type vector
 
+#include "../general/dbg.hpp"
 #include "kernels.hpp"
 #include "vector.hpp"
 #include "../general/forall.hpp"
@@ -1150,6 +1151,7 @@ vector_min_cpu:
 Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
+   dbg("%d", nvid);
 
 #ifdef MFEM_USE_MPI
    if (nvid == SUNDIALS_NVEC_MPIPLUSX)
@@ -1161,6 +1163,7 @@ Vector::Vector(N_Vector nv)
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
+         dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
 #ifdef MFEM_USE_CUDA
@@ -1190,6 +1193,7 @@ Vector::Vector(N_Vector nv)
 
 void Vector::ToNVector(N_Vector &nv)
 {
+   dbg("");
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
 

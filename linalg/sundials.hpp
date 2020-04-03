@@ -70,7 +70,8 @@ protected:
    long saved_global_size;    ///< Global vector length on last initialization.
 
    N_Vector           y;      ///< State vector.
-   SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
+   SUNMatrix
+   A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
    SUNLinearSolver    LSA;    ///< Linear solver for A.
    SUNLinearSolver    LSM;    ///< Linear solver for M.
@@ -205,6 +206,7 @@ public:
 
    /// Destroy the associated CVODE memory and SUNDIALS objects.
    virtual ~CVODESolver();
+
 };
 
 
@@ -378,6 +380,10 @@ public:
 
    /// Destroy the associated ARKode memory and SUNDIALS objects.
    virtual ~ARKStepSolver();
+
+   virtual MemoryClass GetMemoryClass() const
+   { return Device::GetMemoryClass(); }
+
 };
 
 
