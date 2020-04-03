@@ -120,8 +120,8 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
-   const Vector mfem_y(y);
-   Vector mfem_ydot(ydot);
+   const Vector mfem_y(y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
+   Vector mfem_ydot(ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
 
    dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
    dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
