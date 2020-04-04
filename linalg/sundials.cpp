@@ -123,8 +123,10 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    N_VCopyFromDevice_Cuda(y);
    N_VCopyFromDevice_Cuda(ydot);
 #endif
-   const Vector mfem_y(y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
-   Vector mfem_ydot(ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
+   const Vector mfem_y(
+      y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
+   Vector mfem_ydot(
+      ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
 
    dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
    dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
@@ -375,7 +377,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   dbg("mem_type:%d, x:%p", mem_type, x.Read());
+   dbg("\033[7mmem_type:%d, x:%p", mem_type, x.Read());
    MFEM_VERIFY(mm.IsKnown(x.HostRead()),"");
    if (!Parallel())
    {

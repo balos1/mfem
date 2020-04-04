@@ -1179,15 +1179,11 @@ Vector::Vector(N_Vector nv)
             N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
          }
 
+         size = N_VGetLength_Cuda(nv);
          double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
-         size = N_VGetLength_Cuda(nv);
          dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-         data.Wrap(h_ptr, d_ptr, size,  MemoryType::HOST, false);
-
-         //SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv),
-         //               N_VGetLength_Cuda(nv));
-         // how do we set the device data??
+         data.Wrap(h_ptr, d_ptr, size, MemoryType::HOST, false);
          UseDevice(true);
          break;
       }

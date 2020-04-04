@@ -9,6 +9,7 @@
 // terms of the BSD-3 license. We welcome feedback and contributions, see file
 // CONTRIBUTING.md for details.
 
+#include "dbg.hpp"
 #include "forall.hpp"
 #include "mem_manager.hpp"
 
@@ -319,16 +320,16 @@ inline void MmuDealloc(void *ptr, const size_t bytes)
 /// MMU protection, through ::mprotect with no read/write accesses
 inline void MmuProtect(const void *ptr, const size_t bytes)
 {
-   //if (!::mprotect(const_cast<void*>(ptr), bytes, PROT_NONE)) { return; }
-   //mfem_error("MMU protection (NONE) error");
+   if (!::mprotect(const_cast<void*>(ptr), bytes, PROT_NONE)) { return; }
+   mfem_error("MMU protection (NONE) error");
 }
 
 /// MMU un-protection, through ::mprotect with read/write accesses
 inline void MmuAllow(const void *ptr, const size_t bytes)
 {
-   //const int RW = PROT_READ | PROT_WRITE;
-   //if (!::mprotect(const_cast<void*>(ptr), bytes, RW)) { return; }
-   //mfem_error("MMU protection (R/W) error");
+   const int RW = PROT_READ | PROT_WRITE;
+   if (!::mprotect(const_cast<void*>(ptr), bytes, RW)) { return; }
+   mfem_error("MMU protection (R/W) error");
 }
 #else
 inline void MmuInit() { }
@@ -695,10 +696,16 @@ void *MemoryManager::Register_(void *ptr, void *h_tmp, size_t bytes,
    else // DEVICE TYPES
    {
       h_ptr = h_tmp;
+      const bool d_own = own;
+      const bool h_own = own && !h_tmp;
       if (h_tmp == nullptr) { ctrl->Host(h_mt)->Alloc(&h_ptr, bytes); }
       mm.InsertDevice(ptr, h_ptr, bytes, h_mt, d_mt);
-      flags = (own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE) |
-              Mem::OWNS_HOST | Mem::VALID_DEVICE;
+      //flags = (own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE) |
+      //        Mem::OWNS_HOST | Mem::VALID_DEVICE;
+      dbg("h_own:%d d_own:%d", h_own, d_own);
+      flags = d_own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE;
+      flags |= h_own ? Mem::OWNS_HOST : 0 ;
+      flags |= Mem::VALID_DEVICE;
    }
    CheckHostMemoryType_(h_mt, h_ptr);
    return h_ptr;
