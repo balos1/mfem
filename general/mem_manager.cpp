@@ -704,7 +704,7 @@ void *MemoryManager::Register_(void *ptr, void *h_tmp, size_t bytes,
       //        Mem::OWNS_HOST | Mem::VALID_DEVICE;
       dbg("h_own:%d d_own:%d", h_own, d_own);
       flags = d_own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE;
-      flags |= h_own ? Mem::OWNS_HOST : 0 ;
+      flags = h_own ? flags | Mem::OWNS_HOST   : flags & ~Mem::OWNS_HOST;
       flags |= Mem::VALID_DEVICE;
    }
    CheckHostMemoryType_(h_mt, h_ptr);

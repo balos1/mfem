@@ -46,11 +46,9 @@ namespace mfem
 // ---------------------------------------------------------------------------
 
 #ifdef MFEM_USE_CUDA
-SundialsDeviceVector::SundialsDeviceVector() : Vector()
-{ dbg(""); }
+SundialsDeviceVector::SundialsDeviceVector() : Vector() { dbg(""); }
 
-SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s)
-{ dbg(""); }
+SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s) { dbg(""); }
 
 SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s) :
    Vector(wrap, s) { dbg(""); }
@@ -117,16 +115,17 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
-   // At this point the up-to-date data (which was allocated by sundials) for N_Vector y and ydot is on the device.
+   // At this point the up-to-date data (which was allocated by sundials)
+   // for N_Vector y and ydot is on the device.
    // The host array pointer is out of date unless we call N_VCopyFromDevice_Cuda.
 #ifdef MFEM_USE_CUDA
    N_VCopyFromDevice_Cuda(y);
    N_VCopyFromDevice_Cuda(ydot);
 #endif
-   const Vector mfem_y(
-      y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
-   Vector mfem_ydot(
-      ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
+   dbg("mfem_y");
+   const Vector mfem_y(y);
+   dbg("mfem_ydot");
+   Vector mfem_ydot(ydot);
 
    dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
    dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
@@ -238,14 +237,9 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    ODESolver::Init(f_);
    dbg("mem_type:%d", mem_type);
 
-   if (false)
-   {
-      Vector v(3072);
-      Memory<double>(v.ReadWrite(), v.Size(), mem_type, true);
-   }
-
    // Get the vector length
    long local_size = f_.Height();
+   dbg("local_size:%d", local_size);
 #ifdef MFEM_USE_MPI
    long global_size;
 #endif
@@ -290,6 +284,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    if (!sundials_mem)
    {
 #ifdef MFEM_USE_CUDA
+      dbg("!sundials_mem");
       SundialsDeviceVector mfem_y(local_size);
       mfem_y.UseDevice(true);
 #endif
@@ -304,10 +299,6 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 #else
          NV_LENGTH_S(y) = local_size;
          NV_DATA_S(y)   = new double[local_size](); // value-initialize
-         //NV_DATA_S(y)   = Memory<double>(local_size); // value-initialize
-         //Vector(NV_DATA_S(y), NV_LENGTH_S(y)) = 0.0;
-         //dbg("GetHostMemoryType:%d", MemoryManager::GetHostMemoryType());
-         //dbg("\033[32m%p = Memory<double>(%d)", NV_DATA_S(y), NV_LENGTH_S(y));
 #endif
       }
       else
@@ -329,6 +320,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       MFEM_VERIFY(sundials_mem, "error in CVodeCreate()");
 
       // Initialize CVODE
+      dbg("Initialize CVODE");
       flag = CVodeInit(sundials_mem, CVODESolver::RHS, t, y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeInit()");
 
@@ -349,12 +341,9 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 #ifdef MFEM_USE_CUDA
          // Do nothing.
 #else
-         //dbg("\033[32mDelete %p", NV_DATA_S(y));
+         dbg("\033[32mDelete %p", NV_DATA_S(y));
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
-         //double *ptr =  NV_DATA_S(y);
-         //int size = NV_LENGTH_S(y);
-         //Memory<double>(ptr, size, true).Delete();
 #endif
       }
       else
@@ -377,7 +366,8 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   dbg("\033[7mmem_type:%d, x:%p", mem_type, x.Read());
+   dbg("\033[7mmem_type:%d", mem_type);
+   dbg("\033[7mx:%p", x.Read());
    MFEM_VERIFY(mm.IsKnown(x.HostRead()),"");
    if (!Parallel())
    {
@@ -385,7 +375,10 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
       // y->content->host_data = x.HostReadWrite();
       // y->content->device_data = x.ReadWrite();
       // y->content->length = x.Size();
+      dbg("x.ToNVector(y)");
+      x.UseDevice(true);
       x.ToNVector(y);
+      dbg("\033[7mx:%p", x.Read());
 #else
       NV_DATA_S(y) = x.ReadWrite();
 #endif
@@ -416,15 +409,20 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
 
    dbg("Integrate the system");
    double tout = t + dt;
+   dbg("\033[7mx:%p", x.Read());
    flag = CVode(sundials_mem, tout, y, &t, step_mode);
+   dbg("CVode done");
+#warning x seem to be deleted from the MM
+   MFEM_VERIFY(x.Read(), "Should still be known by the memory manager!");
+   dbg("\033[7mx:%p", x.Read());
    MFEM_VERIFY(flag >= 0, "error in CVode()");
 
    // Return the last incremental step size
    flag = CVodeGetLastStep(sundials_mem, &dt);
    MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeGetLastStep()");
    dbg("mem_type:%d",mem_type);
-   Vector y_m(y);
-   //y_m.Print();
+   //Vector y_m(y); y_m.Print();
+   dbg("\033[7mx:%p", x.Read());
    dbg("done");
 }
 

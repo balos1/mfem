@@ -139,7 +139,6 @@ Vector &Vector::operator=(double value)
    const bool use_dev = UseDevice();
    const int N = size;
    auto y = Write(use_dev);
-   dbg("y:%p N:%d", y, N);
    MFEM_FORALL_SWITCH(use_dev, i, N, y[i] = value;);
    return *this;
 }
@@ -1152,7 +1151,7 @@ vector_min_cpu:
 Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   dbg("id #%d", nvid);
+   //dbg("id #%d", nvid);
 
 #ifdef MFEM_USE_MPI
    if (nvid == SUNDIALS_NVEC_MPIPLUSX)
@@ -1172,17 +1171,15 @@ Vector::Vector(N_Vector nv)
       case SUNDIALS_NVEC_CUDA:
       {
          dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
-         dbg("SetDataAndSize(%p, %d)", N_VGetHostArrayPointer_Cuda(nv),
-             N_VGetLength_Cuda(nv));
          if (!N_VIsManagedMemory_Cuda(nv))
          {
             N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
          }
-
          size = N_VGetLength_Cuda(nv);
          double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
          dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
+         //data.Delete();
          data.Wrap(h_ptr, d_ptr, size, MemoryType::HOST, false);
          UseDevice(true);
          break;
@@ -1208,7 +1205,7 @@ void Vector::ToNVector(N_Vector &nv)
 {
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   dbg("id #%d", nvid);
+   //dbg("id #%d", nvid);
 
    switch (nvid)
    {

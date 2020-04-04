@@ -394,7 +394,10 @@ int main(int argc, char *argv[])
    {
       double dt_real = min(dt, t_final - t);
       dbg("ode_solver->Step");
+      dbg("u:%p", u.HostRead());
       ode_solver->Step(u, t, dt_real);
+      dbg("");
+      dbg("u:%p", u.HostRead());
       ti++;
 
       done = (t >= t_final - 1e-8*dt);

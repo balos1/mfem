@@ -690,8 +690,8 @@ inline void Memory<T>::Wrap(T *ptr, T *d_ptr, int size, MemoryType mt, bool own)
    h_ptr = ptr;
    flags = 0;
    MemoryType d_mt = MemoryManager::GetDualMemoryType_(mt);
-   h_ptr = (T*)MemoryManager::Register_(d_ptr, h_ptr, size*sizeof(T),
-                                        d_mt, own, false, flags);
+   MemoryManager::Register_(d_ptr, h_ptr, size*sizeof(T),
+                            d_mt, own, false, flags);
 }
 
 template <typename T>
