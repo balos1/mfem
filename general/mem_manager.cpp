@@ -666,12 +666,14 @@ void *MemoryManager::Register_(void *ptr, void *h_tmp, size_t bytes,
 {
    MFEM_CONTRACT_VAR(alias);
    MFEM_ASSERT(exists, "Internal error!");
-   MFEM_ASSERT(IsHostMemory(mt), "Internal error!");
+   //MFEM_ASSERT(IsHostMemory(mt), "Internal error!");
    MFEM_ASSERT(!alias, "Cannot register an alias!");
    const bool is_host_mem = IsHostMemory(mt);
    const MemType dual_mt = GetDualMemoryType_(mt);
-   const MemType h_mt = mt;
-   const MemType d_mt = dual_mt;
+   const MemType h_mt = is_host_mem ? mt : dual_mt;
+   const MemType d_mt = is_host_mem ? dual_mt : mt;
+   //const MemType h_mt = mt;
+   //const MemType d_mt = dual_mt;
    MFEM_VERIFY_TYPES(h_mt, d_mt);
 
    if (ptr == nullptr && h_tmp == nullptr)

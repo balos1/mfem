@@ -139,6 +139,7 @@ Vector &Vector::operator=(double value)
    const bool use_dev = UseDevice();
    const int N = size;
    auto y = Write(use_dev);
+   dbg("y:%p N:%d", y, N);
    MFEM_FORALL_SWITCH(use_dev, i, N, y[i] = value;);
    return *this;
 }
@@ -1151,7 +1152,7 @@ vector_min_cpu:
 Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   dbg("%d", nvid);
+   dbg("id #%d", nvid);
 
 #ifdef MFEM_USE_MPI
    if (nvid == SUNDIALS_NVEC_MPIPLUSX)
@@ -1163,19 +1164,33 @@ Vector::Vector(N_Vector nv)
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
-         // dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
+         dbg("SUNDIALS_NVEC_SERIAL (id #%d)", nvid);
+         //dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         dbg("SetDataAndSize(%p, %d)", N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv));
+      {
+         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
+         dbg("SetDataAndSize(%p, %d)", N_VGetHostArrayPointer_Cuda(nv),
+             N_VGetLength_Cuda(nv));
          if (!N_VIsManagedMemory_Cuda(nv))
          {
             N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
          }
-         SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv), N_VGetLength_Cuda(nv)); // how do we set the device data??
+
+         double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
+         double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
+         size = N_VGetLength_Cuda(nv);
+         dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
+         data.Wrap(h_ptr, d_ptr, size,  MemoryType::HOST, false);
+
+         //SetDataAndSize(N_VGetHostArrayPointer_Cuda(nv),
+         //               N_VGetLength_Cuda(nv));
+         // how do we set the device data??
          UseDevice(true);
          break;
+      }
 #endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
@@ -1197,18 +1212,22 @@ void Vector::ToNVector(N_Vector &nv)
 {
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   dbg("%d", nvid);
+   dbg("id #%d", nvid);
 
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
+         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
          MFEM_ASSERT(NV_OWN_DATA_S(nv) == SUNFALSE, "invalid serial N_Vector");
          NV_DATA_S(nv) = data;
          NV_LENGTH_S(nv) = size;
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE, "invalid serial N_Vector");
+         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
+         MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE,
+                     "invalid serial N_Vector");
+         dbg("%p %p", HostReadWrite(), Read());
          ((N_VectorContent_Cuda)nv->content)->host_data = HostReadWrite();
          ((N_VectorContent_Cuda)nv->content)->device_data = ReadWrite();
          ((N_VectorContent_Cuda)nv->content)->length = size;

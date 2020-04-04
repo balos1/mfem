@@ -282,6 +282,7 @@ public:
 
        @note The current memory is NOT deleted by this method. */
    inline void Wrap(T *ptr, int size, MemoryType mt, bool own);
+   inline void Wrap(T *ptr, T *d_ptr, int size, MemoryType h_mt, bool own);
 
    /// Create a memory object that points inside the memory object @a base.
    /** The new Memory object uses the same MemoryType(s) as @a base.
@@ -445,7 +446,6 @@ private:
 #endif
 
 private: // Static methods used by the Memory<T> class
-
    /// Allocate and register a new pointer. Return the host pointer.
    /// h_tmp must be already allocated using new T[] if mt is a pure device
    /// memory type, e.g. CUDA (mt will not be HOST).
@@ -522,7 +522,6 @@ private: // Static methods used by the Memory<T> class
    static int CompareHostAndDevice_(void *h_ptr, size_t size, unsigned flags);
 
 private:
-
    /// Insert a host address in the memory map
    void Insert(void *h_ptr, size_t bytes, MemoryType h_mt,  MemoryType d_mt);
 
@@ -680,6 +679,19 @@ inline void Memory<T>::Wrap(T *ptr, int size, MemoryType mt, bool own)
    flags = 0;
    h_ptr = (T*)MemoryManager::Register_(ptr, h_ptr, size*sizeof(T), mt,
                                         own, false, flags);
+}
+
+template <typename T>
+inline void Memory<T>::Wrap(T *ptr, T *d_ptr, int size, MemoryType mt, bool own)
+{
+   capacity = size;
+   MFEM_VERIFY(IsHostMemory(mt),"");
+   h_mt = mt;
+   h_ptr = ptr;
+   flags = 0;
+   MemoryType d_mt = MemoryManager::GetDualMemoryType_(mt);
+   h_ptr = (T*)MemoryManager::Register_(d_ptr, h_ptr, size*sizeof(T),
+                                        d_mt, own, false, flags);
 }
 
 template <typename T>

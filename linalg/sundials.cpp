@@ -10,7 +10,6 @@
 // CONTRIBUTING.md for details.
 
 #include "../general/dbg.hpp"
-//#define dbg(...)
 
 #include "sundials.hpp"
 
@@ -48,15 +47,13 @@ namespace mfem
 
 #ifdef MFEM_USE_CUDA
 SundialsDeviceVector::SundialsDeviceVector() : Vector()
-{
-}
+{ dbg(""); }
 
 SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s)
-{}
+{ dbg(""); }
 
-SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s)
-   : Vector(wrap, s)
-{}
+SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s) :
+   Vector(wrap, s) { dbg(""); }
 
 double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
 {
@@ -120,9 +117,10 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
-   const Vector mfem_y(y);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
-   Vector mfem_ydot(ydot);//does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
-
+   const Vector mfem_y(y);
+   //does SetDataAndSize(N_VGetHostArrayPointer_Cuda(y), N_VGetLength(y))
+   Vector mfem_ydot(ydot);
+   //does SetDataAndSize(N_VGetHostArrayPointer_Cuda(ydot), N_VGetLength(ydot))
    dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
    dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
 

@@ -366,9 +366,12 @@ int main(int argc, char *argv[])
       case 6: ode_solver = new RK6Solver; break;
       case 7:
          cvode = new CVODESolver(CV_ADAMS);
+         dbg("cvode->Init");
          cvode->Init(adv);
          cvode->SetSStolerances(reltol, abstol);
+         dbg("cvode->SetMaxStep");
          cvode->SetMaxStep(dt);
+         dbg("cvode->UseSundialsLinearSolver");
          cvode->UseSundialsLinearSolver();
          ode_solver = cvode; break;
       case 8:
@@ -390,6 +393,7 @@ int main(int argc, char *argv[])
    for (int ti = 0; !done; )
    {
       double dt_real = min(dt, t_final - t);
+      dbg("ode_solver->Step");
       ode_solver->Step(u, t, dt_real);
       ti++;
 
@@ -427,6 +431,7 @@ int main(int argc, char *argv[])
    delete ode_solver;
    delete dc;
 
+   dbg("done");
    return 0;
 }
 
