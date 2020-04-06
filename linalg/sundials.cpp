@@ -108,13 +108,11 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
-   // At this point the up-to-date data (which was allocated by sundials)
-   // for N_Vector y and ydot is on the device.
-   // The host array pointer is out of date unless we call N_VCopyFromDevice_Cuda.
-#ifdef MFEM_USE_CUDA
-   N_VCopyFromDevice_Cuda(y);
-   N_VCopyFromDevice_Cuda(ydot);
-#endif
+//    // At this point the up-to-date data for N_Vector y and ydot is on the device.
+// #ifdef MFEM_USE_CUDA
+//    N_VCopyFromDevice_Cuda(y);
+//    N_VCopyFromDevice_Cuda(ydot);
+// #endif
    const Vector mfem_Y(y);
    Vector mfem_Ydot(ydot);
 
@@ -122,15 +120,14 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
 
    // Compute y' = f(t, y)
    self->f->SetTime(t);
-   self->f->Mult(mfem_Y, mfem_Ydot);//*CVODESolver::mfem_ydot);
+   self->f->Mult(mfem_Y, mfem_Ydot);
 
-#ifdef MFEM_USE_CUDA
-   //CVODESolver::mfem_ydot.ToNVector(y);
-   // cannot do this because mfem_ydot will go out of scope taking the data with it
-   // Since MFEM is not using the ydot device pointer underneath mfem_ydot, we have to copy from the host.
-   // Is the mfem_ydot data coherent across the host and device after calling Mult???
-   N_VCopyToDevice_Cuda(ydot);
-#endif
+// #ifdef MFEM_USE_CUDA
+//    //CVODESolver::mfem_ydot.ToNVector(y);
+//    // cannot do this because mfem_ydot will go out of scope taking the data with it
+//    // Is the mfem_ydot data coherent across the host and device after calling Mult???
+//    N_VCopyToDevice_Cuda(ydot);
+// #endif
    // Return success
    return (0);
 }
@@ -334,9 +331,6 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
-      // y->content->host_data = x.HostReadWrite();
-      // y->content->device_data = x.ReadWrite();
-      // y->content->length = x.Size();
       x.UseDevice(true);
       x.ToNVector(y);
 #else
@@ -774,8 +768,12 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       // Delete the allocated data in y.
       if (!Parallel())
       {
+#ifdef MFEM_USE_CUDA
+         // Do nothing.
+#else
          delete [] NV_DATA_S(y);
          NV_DATA_S(y) = NULL;
+#endif
       }
       else
       {
@@ -799,9 +797,10 @@ void ARKStepSolver::Step(Vector &x, double &t, double &dt)
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
+      x.UseDevice(true);
       x.ToNVector(y);
 #else
-      NV_DATA_S(y) = x.GetData();
+      NV_DATA_S(y) = x.ReadWrite();
 #endif
       MFEM_VERIFY(NV_LENGTH_S(y) == x.Size(), "");
    }
