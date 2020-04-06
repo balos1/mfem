@@ -696,15 +696,12 @@ void *MemoryManager::Register_(void *ptr, void *h_tmp, size_t bytes,
    else // DEVICE TYPES
    {
       h_ptr = h_tmp;
-      const bool d_own = own;
-      const bool h_own = own && !h_tmp;
       if (h_tmp == nullptr) { ctrl->Host(h_mt)->Alloc(&h_ptr, bytes); }
       mm.InsertDevice(ptr, h_ptr, bytes, h_mt, d_mt);
       //flags = (own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE) |
       //        Mem::OWNS_HOST | Mem::VALID_DEVICE;
-      dbg("h_own:%d d_own:%d", h_own, d_own);
-      flags = d_own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE;
-      flags = h_own ? flags | Mem::OWNS_HOST   : flags & ~Mem::OWNS_HOST;
+      flags = own ? flags | Mem::OWNS_DEVICE : flags & ~Mem::OWNS_DEVICE;
+      flags = own ? flags | Mem::OWNS_HOST   : flags & ~Mem::OWNS_HOST;
       flags |= Mem::VALID_DEVICE;
    }
    CheckHostMemoryType_(h_mt, h_ptr);

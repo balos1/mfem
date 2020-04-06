@@ -1164,7 +1164,7 @@ Vector::Vector(N_Vector nv)
    {
       case SUNDIALS_NVEC_SERIAL:
          dbg("SUNDIALS_NVEC_SERIAL (id #%d)", nvid);
-         //dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
+         dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
 #ifdef MFEM_USE_CUDA
@@ -1179,8 +1179,17 @@ Vector::Vector(N_Vector nv)
          double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
          dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-         //data.Delete();
-         data.Wrap(h_ptr, d_ptr, size, MemoryType::HOST, false);
+         if (mm.IsKnown(h_ptr))
+         {
+            dbg("\033[7m[Vector] Known!");
+            data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), true);
+            data.ClearOwnerFlags();
+         }
+         else
+         {
+            dbg("\033[7m[Vector] NOT Known!");
+            data.Wrap(h_ptr, d_ptr, size, MemoryType::HOST, false);
+         }
          UseDevice(true);
          break;
       }

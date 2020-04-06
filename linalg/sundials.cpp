@@ -110,11 +110,11 @@ static int LSFree(SUNLinearSolver LS)
 // ---------------------------------------------------------------------------
 // CVODE interface
 // ---------------------------------------------------------------------------
-
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    dbg("");
+
    // At this point the up-to-date data (which was allocated by sundials)
    // for N_Vector y and ydot is on the device.
    // The host array pointer is out of date unless we call N_VCopyFromDevice_Cuda.
@@ -122,23 +122,20 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    N_VCopyFromDevice_Cuda(y);
    N_VCopyFromDevice_Cuda(ydot);
 #endif
-   dbg("mfem_y");
-   const Vector mfem_y(y);
-   dbg("mfem_ydot");
-   Vector mfem_ydot(ydot);
-
-   dbg("mfem_y.mt:%d", mfem_y.GetMemory().GetMemoryType());
-   dbg("mfem_ydot.mt:%d", mfem_ydot.GetMemory().GetMemoryType());
+   const Vector mfem_Y(y);
+   dbg("mfem_Y: %p,%p", mfem_Y.HostRead(), mfem_Y.Read());
+   Vector mfem_Ydot(ydot);
+   dbg("mfem_Ydot: %p,%p", mfem_Ydot.HostRead(), mfem_Ydot.Read());
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
-   dbg("f.mc:%d",self->f->GetMemoryClass());
 
    // Compute y' = f(t, y)
    self->f->SetTime(t);
-   self->f->Mult(mfem_y, mfem_ydot);
+   self->f->Mult(mfem_Y, mfem_Ydot);//*CVODESolver::mfem_ydot);
 
 #ifdef MFEM_USE_CUDA
-   // mfem_ydot.ToNVector(y); // cannot do this because mfem_ydot will go out of scope taking the data with it
+   //CVODESolver::mfem_ydot.ToNVector(y);
+   // cannot do this because mfem_ydot will go out of scope taking the data with it
    // Since MFEM is not using the ydot device pointer underneath mfem_ydot, we have to copy from the host.
    // Is the mfem_ydot data coherent across the host and device after calling Mult???
    N_VCopyToDevice_Cuda(ydot);
@@ -367,8 +364,6 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
    dbg("\033[7mmem_type:%d", mem_type);
-   dbg("\033[7mx:%p", x.Read());
-   MFEM_VERIFY(mm.IsKnown(x.HostRead()),"");
    if (!Parallel())
    {
 #ifdef MFEM_USE_CUDA
@@ -409,11 +404,9 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
 
    dbg("Integrate the system");
    double tout = t + dt;
-   dbg("\033[7mx:%p", x.Read());
+   dbg("\033[7mx:%p,%p", x.HostRead(), x.Read());
    flag = CVode(sundials_mem, tout, y, &t, step_mode);
    dbg("CVode done");
-#warning x seem to be deleted from the MM
-   MFEM_VERIFY(x.Read(), "Should still be known by the memory manager!");
    dbg("\033[7mx:%p", x.Read());
    MFEM_VERIFY(flag >= 0, "error in CVode()");
 
