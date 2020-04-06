@@ -56,7 +56,7 @@ public:
    SundialsDeviceVector(double *wrap, int s);
    SundialsDeviceVector(Vector &x);
 
-   static N_Vector MakeEmptySundialsCudaVector();
+   static N_Vector MakeEmptyNVector();
    static double NvecDot(N_Vector x, N_Vector y);
 };
 #endif

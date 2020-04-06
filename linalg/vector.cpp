@@ -1207,6 +1207,7 @@ void Vector::ToNVector(N_Vector &nv)
    {
       case SUNDIALS_NVEC_SERIAL:
          MFEM_ASSERT(NV_OWN_DATA_S(nv) == SUNFALSE, "invalid serial N_Vector");
+         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostReadWrite());
          NV_DATA_S(nv) = data;
          NV_LENGTH_S(nv) = size;
          break;
@@ -1214,7 +1215,7 @@ void Vector::ToNVector(N_Vector &nv)
       case SUNDIALS_NVEC_CUDA:
          MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE,
                      "invalid serial N_Vector");
-         dbg("%p %p", HostReadWrite(), Read());
+         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
          ((N_VectorContent_Cuda)nv->content)->host_data = HostReadWrite();
          ((N_VectorContent_Cuda)nv->content)->device_data = ReadWrite();
          ((N_VectorContent_Cuda)nv->content)->length = size;

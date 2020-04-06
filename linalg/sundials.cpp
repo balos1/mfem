@@ -44,12 +44,23 @@ namespace mfem
 // ---------------------------------------------------------------------------
 
 #ifdef MFEM_USE_CUDA
-SundialsDeviceVector::SundialsDeviceVector() : Vector() { }
+SundialsDeviceVector::SundialsDeviceVector() 
+   : Vector()
+{
+   UseDevice(true);
+}
 
-SundialsDeviceVector::SundialsDeviceVector(int s) : Vector(s) { }
+SundialsDeviceVector::SundialsDeviceVector(int s)
+   : Vector(s)
+{
+   UseDevice(true);
+}
 
-SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s) :
-   Vector(wrap, s) { }
+SundialsDeviceVector::SundialsDeviceVector(double *wrap, int s)
+   : Vector(wrap, s) 
+{
+   UseDevice(true);
+}
 
 double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
 {
@@ -58,11 +69,15 @@ double SundialsDeviceVector::NvecDot(N_Vector nvecx, N_Vector nvecy)
    return x * y;
 }
 
-N_Vector SundialsDeviceVector::MakeEmptySundialsCudaVector()
+N_Vector SundialsDeviceVector::MakeEmptyNVector()
 {
-   N_Vector nvecx = N_VNewEmpty_Cuda();
-   nvecx->ops->nvdotprod = SundialsDeviceVector::NvecDot;
-   return nvecx;
+   if (Device::IsAvailable())
+   {
+      N_Vector nvecx = N_VNewEmpty_Cuda();
+      nvecx->ops->nvdotprod = SundialsDeviceVector::NvecDot;
+      return nvecx;
+   }
+   return N_VNewEmpty_Serial(0);
 }
 #endif // MFEM_USE_CUDA
 
@@ -108,7 +123,7 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
-//    // At this point the up-to-date data for N_Vector y and ydot is on the device.
+   // At this point the up-to-date data for N_Vector y and ydot is on the device.
 // #ifdef MFEM_USE_CUDA
 //    N_VCopyFromDevice_Cuda(y);
 //    N_VCopyFromDevice_Cuda(ydot);
@@ -160,9 +175,9 @@ CVODESolver::CVODESolver(int lmm)
    : lmm_type(lmm), step_mode(CV_NORMAL)
 {
 #ifdef MFEM_USE_CUDA
-   // Allocate an empty cuda N_Vector
-   y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
-   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+   // Allocate an empty N_Vector
+   y = SundialsDeviceVector::MakeEmptyNVector();
+   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptyNVector()");
 #else
    // Allocate an empty serial N_Vector
    y = N_VNewEmpty_Serial(0);
@@ -177,14 +192,14 @@ CVODESolver::CVODESolver(MPI_Comm comm, int lmm)
    if (comm == MPI_COMM_NULL)
    {
 #ifdef MFEM_USE_CUDA
-      // Allocate an empty cuda N_Vector
-      y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
-      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+      // Allocate an empty NVector
+      y = SundialsDeviceVector::MakeEmptyNVector();
+      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptyNVector()");
 #else
       // Allocate an empty serial N_Vector
       y = N_VNewEmpty_Serial(0);
       MFEM_VERIFY(y, "error in N_VNewEmpty_Serial()");
-#endif
+#endif // MFEM_USE_CUDA
    }
    else
    {
@@ -251,7 +266,6 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    {
 #ifdef MFEM_USE_CUDA
       SundialsDeviceVector mfem_y(local_size);
-      mfem_y.UseDevice(true);
 #endif
 
       // Temporarly set N_Vector wrapper data to create CVODE. The correct
@@ -615,9 +629,9 @@ ARKStepSolver::ARKStepSolver(Type type)
      use_implicit(type == IMPLICIT || type == IMEX)
 {
 #ifdef MFEM_USE_CUDA
-   // Allocate an empty cuda N_Vector
-   y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
-   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+   // Allocate an empty N_Vector
+   y = SundialsDeviceVector::MakeEmptyNVector();
+   MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptyNVector()");
 #else
    // Allocate an empty serial N_Vector
    y = N_VNewEmpty_Serial(0);
@@ -633,9 +647,9 @@ ARKStepSolver::ARKStepSolver(MPI_Comm comm, Type type)
    if (comm == MPI_COMM_NULL)
    {
 #ifdef MFEM_USE_CUDA
-      // Allocate an empty cuda N_Vector
-      y = SundialsDeviceVector::MakeEmptySundialsCudaVector();
-      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptySundialsCudaVector()");
+      // Allocate an empty N_Vector
+      y = SundialsDeviceVector::MakeEmptyNVector();
+      MFEM_VERIFY(y, "error in SundialsDeviceVector::MakeEmptyNVector()");
 #else
       // Allocate an empty serial N_Vector
       y = N_VNewEmpty_Serial(0);
@@ -709,7 +723,6 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    {
 #ifdef MFEM_USE_CUDA
       SundialsDeviceVector mfem_y(local_size);
-      mfem_y.UseDevice(true);
 #endif
 
       // Temporarly set N_Vector wrapper data to create ARKStep. The correct

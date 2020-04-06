@@ -375,6 +375,12 @@ int main(int argc, char *argv[])
          cvode->UseSundialsLinearSolver();
          ode_solver = cvode; break;
       case 8:
+         arkode = new ARKStepSolver(ARKStepSolver::EXPLICIT);
+         arkode->Init(adv);
+         arkode->SetSStolerances(reltol, abstol);
+         arkode->SetMaxStep(dt);
+         arkode->SetOrder(4);
+         ode_solver = arkode; break;
       case 9:
          arkode = new ARKStepSolver(ARKStepSolver::EXPLICIT);
          arkode->Init(adv);
