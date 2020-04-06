@@ -1151,7 +1151,6 @@ vector_min_cpu:
 Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   //dbg("id #%d", nvid);
 
 #ifdef MFEM_USE_MPI
    if (nvid == SUNDIALS_NVEC_MPIPLUSX)
@@ -1163,14 +1162,11 @@ Vector::Vector(N_Vector nv)
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
-         dbg("SUNDIALS_NVEC_SERIAL (id #%d)", nvid);
-         dbg("SetDataAndSize(%p, %d)", NV_DATA_S(nv), NV_LENGTH_S(nv));
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
          if (!N_VIsManagedMemory_Cuda(nv))
          {
             N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
@@ -1179,17 +1175,9 @@ Vector::Vector(N_Vector nv)
          double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
          dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-         if (mm.IsKnown(h_ptr))
-         {
-            dbg("\033[7m[Vector] Known!");
-            data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), true);
-            data.ClearOwnerFlags();
-         }
-         else
-         {
-            dbg("\033[7m[Vector] NOT Known!");
-            data.Wrap(h_ptr, d_ptr, size, MemoryType::HOST, false);
-         }
+         const bool known = mm.IsKnown(h_ptr);
+         data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
+         if (known) { data.ClearOwnerFlags(); }
          UseDevice(true);
          break;
       }
@@ -1214,19 +1202,16 @@ void Vector::ToNVector(N_Vector &nv)
 {
    MFEM_ASSERT(nv, "N_Vector handle is NULL");
    N_Vector_ID nvid = N_VGetVectorID(nv);
-   //dbg("id #%d", nvid);
 
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:
-         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
          MFEM_ASSERT(NV_OWN_DATA_S(nv) == SUNFALSE, "invalid serial N_Vector");
          NV_DATA_S(nv) = data;
          NV_LENGTH_S(nv) = size;
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         dbg("SUNDIALS_NVEC_CUDA (id #%d)", nvid);
          MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE,
                      "invalid serial N_Vector");
          dbg("%p %p", HostReadWrite(), Read());
