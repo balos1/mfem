@@ -46,15 +46,19 @@ namespace mfem
 SundialsNVector::SundialsNVector()
    : Vector()
 {
+   // MFEM creates and owns the data.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice());
+   own_NVector = 1;
 }
 
 SundialsNVector::SundialsNVector(int s)
    : Vector(s)
 {
+   // MFEM creates and owns the data.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice(), data, s);
+   own_NVector = 1;
 }
 
 SundialsNVector::SundialsNVector(N_Vector nv)
@@ -98,11 +102,20 @@ SundialsNVector::SundialsNVector(N_Vector nv)
       default:
          MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
    }
+   own_NVector = 0;
+}
+
+SundialsNVector::SundialsNVector(const SundialsNVector &y)
+   : SundialsNVector(y.size)
+{
 }
 
 SundialsNVector::~SundialsNVector()
 {
-   if (OwnsData()) N_VDestroy(x);
+   if (own_NVector)
+   {
+      N_VDestroy(x);
+   }
 }
 
 N_Vector_ID SundialsNVector::GetNVectorID() const
@@ -113,16 +126,51 @@ N_Vector_ID SundialsNVector::GetNVectorID() const
 void SundialsNVector::SetSize(int s)
 {
    Vector::SetSize(s);
-   if (OwnsData()) N_VDestroy(x);
+   if (own_NVector)
+   {
+      N_VDestroy(x);
+   }
    x = MakeNVector(UseDevice(), data, s);
+}
+
+void SundialsNVector::SetData(double *d)
+{
+   Vector::SetData(d);
+   switch (GetNVectorID())
+   {
+      case SUNDIALS_NVEC_SERIAL:
+         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
+         NV_DATA_S(x) = HostReadWrite();
+         break;
+#ifdef MFEM_USE_CUDA
+      case SUNDIALS_NVEC_CUDA:
+         // MFEM_ASSERT(static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->own_data == SUNFALSE, "invalid cuda N_Vector");
+         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->host_data = HostReadWrite();
+         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->device_data = ReadWrite();
+         break;
+#endif
+#ifdef MFEM_USE_MPI
+      case SUNDIALS_NVEC_PARALLEL:
+         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
+         NV_DATA_P(x) = data;
+         NV_LOCLENGTH_P(x) = size;
+         break;
+      case SUNDIALS_NVEC_PARHYP:
+      {
+         hypre_Vector *hpv_local = N_VGetVector_ParHyp(nv)->local_vector;
+         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
+         hpv_local->data = data;
+         break;
+      }
+#endif
+      default:
+         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
+   }
 }
 
 void SundialsNVector::SetDataAndSize(double *d, int s)
 {
    Vector::SetDataAndSize(d, s);
-
-   MFEM_ASSERT(x, "N_Vector handle is NULL");
-
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
@@ -133,12 +181,15 @@ void SundialsNVector::SetDataAndSize(double *d, int s)
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         // MFEM_ASSERT(static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->own_data == SUNFALSE, "invalid cuda N_Vector");
+      {
+         auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
+         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->host_data = HostReadWrite();
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->device_data = ReadWrite();
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->length = size;
+         content->host_data = HostReadWrite();
+         content->device_data = ReadWrite();
+         content->length = size;
          break;
+      }
 #endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
@@ -185,7 +236,8 @@ N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int 
 #ifdef MFEM_USE_CUDA
    if (use_device)
    {
-      x = N_VMake_Cuda(s, mfem::ReadWrite(data, s, false), mfem::ReadWrite(data, s, true));
+      x = N_VMake_Cuda(s, mfem::ReadWrite(data, s, false),
+                       mfem::ReadWrite(data, s, true));
    }
    else
    {

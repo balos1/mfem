@@ -50,6 +50,8 @@ namespace mfem
 class SundialsNVector : public Vector
 {
 protected:
+   int own_NVector;
+
    /// The actual SUNDIALS object
    N_Vector x;
 
@@ -66,23 +68,38 @@ public:
    /** The N_Vector @nv must be destroyed outside. */
    SundialsNVector(N_Vector nv);
 
+   /// Creates vector compatible with y
+   SundialsNVector(const SundialsNVector &y);
+
    /// Calls SUNDIALS' N_VDestroy function.
    ~SundialsNVector();
 
-   /// Returns the N_Vector_ID for the underlying N_Vector.
+   /// Returns the N_Vector_ID for the internal N_Vector.
    N_Vector_ID GetNVectorID() const;
 
    /// Resize the vector to size @a s.
-   /** If the vector owns the data, then the underlying N_Vector is destroyed,
-    * and recreated with the correct size. Otherwise, the underlying N_Vector
+   /** If the vector owns the data, then the internal N_Vector is destroyed,
+    * and recreated with the correct size. Otherwise, the internal N_Vector
     * must be destroyed outside. */
    void SetSize(int s);
 
-   /// Set the Vector data and size.
+   /// Set the vector data.
+   void SetData(double *d);
+
+   /// Set the vector data and size.
    void SetDataAndSize(double *d, int s);
 
    /// Typecasting to SUNDIALS' N_Vector type
    operator N_Vector() const { return x; }
+
+   /// Changes the ownership of the the vector
+   N_Vector StealNVector() { own_NVector = 0; return x; }
+
+   /// Sets ownership of the internal N_Vector
+   void SetOwnership(int own) { own_NVector = own; }
+
+   /// Gets ownership of the internal N_Vector
+   int GetOwnership() const { return own_NVector; }
    
    /// Create a N_Vector.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
