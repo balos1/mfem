@@ -1152,13 +1152,6 @@ Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
 
-#ifdef MFEM_USE_MPI
-   if (nvid == SUNDIALS_NVEC_MPIPLUSX)
-   {
-      nvid = N_VGetVectorID(N_VGetLocalVector_MPIPlusX(nv));
-   }
-#endif
-
    switch (nvid)
    {
       case SUNDIALS_NVEC_SERIAL:

@@ -46,20 +46,42 @@ namespace mfem
 // Base class for interfacing with SUNDIALS packages
 // ---------------------------------------------------------------------------
 
-#ifdef MFEM_USE_CUDA
-/// Vector interface for SUNDIALS Device (e.g. GPU) vectors.
-class SundialsDeviceVector : public Vector
+/// Vector interface for SUNDIALS N_Vectors.
+class SundialsNVector : public Vector
 {
-public:
-   SundialsDeviceVector();
-   SundialsDeviceVector(int s);
-   SundialsDeviceVector(double *wrap, int s);
-   SundialsDeviceVector(Vector &x);
+   friend class SundialsSolver;
 
-   static N_Vector MakeEmptyNVector();
+protected:
+   /// The actual SUNDIALS object
+   N_Vector x;
+
+public:
+   SundialsNVector();
+   SundialsNVector(int s);
+   SundialsNVector(double *wrap, int s);
+   SundialsNVector(N_Vector nv);
+   ~SundialsNVector();
+
+   ///
+   N_Vector_ID GetNVectorID() const;
+
+   ///
+   void Resize(int s);
+
+   void SetDataAndSize(double *d, int s);
+
+   /// Typecasting to SUNDIALS' N_Vector type
+   operator N_Vector() const { return x; }
+
+   
+   static N_Vector MakeNVector(bool use_device);
+   static N_Vector MakeNVector(bool use_device, Memory<double> wrap, int s);
+#ifdef MFEM_USE_MPI
+   static N_Vector MakeEmptyParNVector(MPI_Comm comm);
+#endif
+
    static double NvecDot(N_Vector x, N_Vector y);
 };
-#endif
 
 /// Base class for interfacing with SUNDIALS packages.
 class SundialsSolver
@@ -70,9 +92,9 @@ protected:
    bool reinit;               ///< Flag to signal memory reinitialization is need.
    long saved_global_size;    ///< Global vector length on last initialization.
 
-   N_Vector           y;      ///< State vector.
-   SUNMatrix
-   A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
+   // N_Vector           y;      ///< State vector.
+   SundialsNVector*   Y;      ///< State vector.
+   SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
    SUNLinearSolver    LSA;    ///< Linear solver for A.
    SUNLinearSolver    LSM;    ///< Linear solver for M.
@@ -80,7 +102,7 @@ protected:
 
 #ifdef MFEM_USE_MPI
    bool Parallel() const
-   { return (N_VGetVectorID(y) != SUNDIALS_NVEC_SERIAL) || (N_VGetVectorID(y) != SUNDIALS_NVEC_CUDA); }
+   { return (y.GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (y.GetNVectorID() != SUNDIALS_NVEC_CUDA); }
 #else
    bool Parallel() const { return false; }
 #endif
@@ -93,7 +115,7 @@ protected:
    /** @brief Protected constructor: objects of this type should be constructed
        only as part of a derived class. */
    SundialsSolver() : sundials_mem(NULL), flag(0), reinit(false),
-      saved_global_size(0), y(NULL), A(NULL), M(NULL),
+      saved_global_size(0), Y(NULL), A(NULL), M(NULL),
       LSA(NULL), LSM(NULL), NLS(NULL) { }
 
 public:
