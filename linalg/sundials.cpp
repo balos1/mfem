@@ -54,14 +54,7 @@ SundialsNVector::SundialsNVector(int s)
    : Vector(s)
 {
    UseDevice(Device::IsAvailable());
-   x = MakeNVector(UseDevice(), data, s); // should make nvector with size
-}
-
-SundialsNVector::SundialsNVector(double *wrap, int s)
-   : Vector(wrap, s) 
-{
-   UseDevice(Device::IsAvailable());
-   x = MakeNVector(UseDevice(), data, s); // should make nvector with data
+   x = MakeNVector(UseDevice(), data, s);
 }
 
 SundialsNVector::SundialsNVector(N_Vector nv)
@@ -70,8 +63,13 @@ SundialsNVector::SundialsNVector(N_Vector nv)
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
-         SetDataAndSize(NV_DATA_S(x), NV_LENGTH_S(x));
+      {
+         const bool known = mm.IsKnown(NV_DATA_S(x));
+         size = NV_LENGTH_S(x);
+         data.Wrap(NV_DATA_S(x), NV_LENGTH_S(x), false);
+         if (known) { data.ClearOwnerFlags(); }
          break;
+      }
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
@@ -104,7 +102,7 @@ SundialsNVector::SundialsNVector(N_Vector nv)
 
 SundialsNVector::~SundialsNVector()
 {
-   N_VDestroy(x);
+   if (OwnsData()) N_VDestroy(x);
 }
 
 N_Vector_ID SundialsNVector::GetNVectorID() const
@@ -112,11 +110,11 @@ N_Vector_ID SundialsNVector::GetNVectorID() const
    return N_VGetVectorID(x);
 }
 
-void SundialsNVector::Resize(int s)
+void SundialsNVector::SetSize(int s)
 {
-   SetSize(s);
-   N_VDestroy(x);
-   x = MakeNVector(UseDevice(), data, s); // should make nvector with size
+   Vector::SetSize(s);
+   if (OwnsData()) N_VDestroy(x);
+   x = MakeNVector(UseDevice(), data, s);
 }
 
 void SundialsNVector::SetDataAndSize(double *d, int s)
@@ -128,14 +126,14 @@ void SundialsNVector::SetDataAndSize(double *d, int s)
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
-         MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostReadWrite());
-         NV_DATA_S(x) = data;
+         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
+         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
+         NV_DATA_S(x) = HostReadWrite();
          NV_LENGTH_S(x) = size;
          break;
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
-         MFEM_ASSERT(static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->own_data == SUNFALSE, "invalid cuda N_Vector");
+         // MFEM_ASSERT(static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
          static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->host_data = HostReadWrite();
          static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->device_data = ReadWrite();
@@ -144,14 +142,14 @@ void SundialsNVector::SetDataAndSize(double *d, int s)
 #endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
-         MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
+         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
          NV_DATA_P(x) = data;
          NV_LOCLENGTH_P(x) = size;
          break;
       case SUNDIALS_NVEC_PARHYP:
       {
          hypre_Vector *hpv_local = N_VGetVector_ParHyp(nv)->local_vector;
-         MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
+         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
          hpv_local->data = data;
          hpv_local->size = size;
          break;
@@ -379,7 +377,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
-      Y->Resize(local_size);
+      Y->SetSize(local_size);
 
 #ifdef MFEM_USE_MPI
       if (Parallel())
@@ -416,7 +414,6 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
    Y->SetDataAndSize(x.GetMemory(), x.Size());
-   // Y->Set
 
    if (Parallel())
    {
@@ -761,7 +758,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
-      Y->Resize(local_size);
+      Y->SetSize(local_size);
 
 #ifdef MFEM_USE_MPI
       if (Parallel())
@@ -1220,7 +1217,7 @@ void KINSolver::SetOperator(const Operator &op)
 
    if (!sundials_mem)
    {
-      Y->Resize(local_size);
+      Y->SetSize(local_size);
 
       if (Parallel())
       {

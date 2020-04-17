@@ -49,37 +49,56 @@ namespace mfem
 /// Vector interface for SUNDIALS N_Vectors.
 class SundialsNVector : public Vector
 {
-   friend class SundialsSolver;
-
 protected:
    /// The actual SUNDIALS object
    N_Vector x;
 
+   friend class SundialsSolver;
+
 public:
+   /// Creates an empty vector.
    SundialsNVector();
+
+   /// Creates a SundialsNVector with given size.
    SundialsNVector(int s);
-   SundialsNVector(double *wrap, int s);
+
+   /// Creates a SundialsNVector out of a SUNDIALS N_Vector object.
+   /** The N_Vector @nv must be destroyed outside. */
    SundialsNVector(N_Vector nv);
+
+   /// Calls SUNDIALS' N_VDestroy function.
    ~SundialsNVector();
 
-   ///
+   /// Returns the N_Vector_ID for the underlying N_Vector.
    N_Vector_ID GetNVectorID() const;
 
-   ///
-   void Resize(int s);
+   /// Resize the vector to size @a s.
+   /** If the vector owns the data, then the underlying N_Vector is destroyed,
+    * and recreated with the correct size. Otherwise, the underlying N_Vector
+    * must be destroyed outside. */
+   void SetSize(int s);
 
+   /// Set the Vector data and size.
    void SetDataAndSize(double *d, int s);
 
    /// Typecasting to SUNDIALS' N_Vector type
    operator N_Vector() const { return x; }
-
    
+   /// Create a N_Vector.
+   /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(bool use_device);
+   
+   /// Create a N_Vector using @wrap for the data and @s for the size.
+   /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
+       @param[in] wrap  The data attached to the SUNDIALS N_Vector.
+       @param[in] s  The size of the vector. */
    static N_Vector MakeNVector(bool use_device, Memory<double> wrap, int s);
+
 #ifdef MFEM_USE_MPI
    static N_Vector MakeEmptyParNVector(MPI_Comm comm);
 #endif
 
+   /// Compute the dot product of two SUNDIALS' N_Vector objects.
    static double NvecDot(N_Vector x, N_Vector y);
 };
 
@@ -92,7 +111,6 @@ protected:
    bool reinit;               ///< Flag to signal memory reinitialization is need.
    long saved_global_size;    ///< Global vector length on last initialization.
 
-   // N_Vector           y;      ///< State vector.
    SundialsNVector*   Y;      ///< State vector.
    SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
@@ -102,7 +120,7 @@ protected:
 
 #ifdef MFEM_USE_MPI
    bool Parallel() const
-   { return (y.GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (y.GetNVectorID() != SUNDIALS_NVEC_CUDA); }
+   { return (Y.GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (Y.GetNVectorID() != SUNDIALS_NVEC_CUDA); }
 #else
    bool Parallel() const { return false; }
 #endif
