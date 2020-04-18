@@ -57,8 +57,11 @@ protected:
 
    friend class SundialsSolver;
 
+   /// Set data and length of internal N_Vector x from 'this'.
+   void _SetDataAndSize_(long glob_size = 0);
+
 public:
-   /// Creates an empty vector.
+   /// Creates an empty SundialsNVector.
    SundialsNVector();
 
    /// Creates a SundialsNVector with given size.
@@ -68,26 +71,39 @@ public:
    /** The N_Vector @nv must be destroyed outside. */
    SundialsNVector(N_Vector nv);
 
+#ifdef MFEM_USE_MPI
+   /// Creates an empty SundialsNVector.
+   SundialsNVector(MPI_Comm comm);
+
+   /// Creates a SundialsNVector with the given local and global sizes.
+   SundialsNVector(MPI_Comm comm, int loc_size, int glob_size);
+#endif
+
    /// Creates vector compatible with y
    SundialsNVector(const SundialsNVector &y);
 
-   /// Calls SUNDIALS' N_VDestroy function.
+   /// Calls SUNDIALS N_VDestroy function.
    ~SundialsNVector();
 
    /// Returns the N_Vector_ID for the internal N_Vector.
-   N_Vector_ID GetNVectorID() const;
+   inline N_Vector_ID GetNVectorID() const { return N_VGetVectorID(x); }
+
+#ifdef MFEM_USE_MPI
+   /// Returns the MPI commmunicator for the internal N_Vector x.
+   inline MPI_Comm Communicator() const { return *static_cast<MPI_Comm*>(N_VGetCommunicator(x)); }
+
+   /// Returns the MPI global length for the internal N_Vector x.
+   inline int GlobalSize() const { return N_VGetLength(x); }
+#endif
 
    /// Resize the vector to size @a s.
-   /** If the vector owns the data, then the internal N_Vector is destroyed,
-    * and recreated with the correct size. Otherwise, the internal N_Vector
-    * must be destroyed outside. */
-   void SetSize(int s);
+   void SetSize(int s, int glob_size = 0);
 
    /// Set the vector data.
    void SetData(double *d);
 
    /// Set the vector data and size.
-   void SetDataAndSize(double *d, int s);
+   void SetDataAndSize(double *d, int s, int glob_size = 0);
 
    /// Typecasting to SUNDIALS' N_Vector type
    operator N_Vector() const { return x; }
@@ -112,11 +128,21 @@ public:
    static N_Vector MakeNVector(bool use_device, Memory<double> wrap, int s);
 
 #ifdef MFEM_USE_MPI
-   static N_Vector MakeEmptyParNVector(MPI_Comm comm);
+   /// Create a parallel N_Vector.
+   /** @param[in] comm  The MPI communicator to use.
+       @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
+   static N_Vector MakeNVector(MPI_Comm comm, bool use_device);
+   
+   /// Create a N_Vector using @wrap for the data and @s for the size.
+   /** @param[in] comm  The MPI communicator to use.
+       @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
+       @param[in] wrap  The data attached to the SUNDIALS N_Vector.
+       @param[in] loc_size  The size of the vector.
+       @param[in] glob_size  The global size of the vector. */
+   static N_Vector MakeNVector(MPI_Comm comm, bool use_device, Memory<double> wrap,
+                               int loc_size, int glob_size);
 #endif
 
-   /// Compute the dot product of two SUNDIALS' N_Vector objects.
-   static double NvecDot(N_Vector x, N_Vector y);
 };
 
 /// Base class for interfacing with SUNDIALS packages.
@@ -137,7 +163,7 @@ protected:
 
 #ifdef MFEM_USE_MPI
    bool Parallel() const
-   { return (Y.GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (Y.GetNVectorID() != SUNDIALS_NVEC_CUDA); }
+   { return (Y->GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (Y->GetNVectorID() != SUNDIALS_NVEC_CUDA); }
 #else
    bool Parallel() const { return false; }
 #endif

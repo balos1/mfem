@@ -43,10 +43,58 @@ namespace mfem
 // SUNDIALS N_Vector interface functions
 // ---------------------------------------------------------------------------
 
+void SundialsNVector::_SetDataAndSize_(long glob_size)
+{
+   switch (GetNVectorID())
+   {
+      case SUNDIALS_NVEC_SERIAL:
+      {
+         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
+         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
+         NV_DATA_S(x) = HostReadWrite();
+         NV_LENGTH_S(x) = size;
+         break;
+      }
+#ifdef MFEM_USE_CUDA
+      case SUNDIALS_NVEC_CUDA:
+      {
+         auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
+         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
+         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
+         content->host_data = HostReadWrite();
+         content->device_data = ReadWrite();
+         content->length = size;
+         break;
+      }
+#endif
+#ifdef MFEM_USE_MPI
+      case SUNDIALS_NVEC_PARALLEL:
+      {
+         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
+         NV_DATA_P(x) = HostReadWrite();
+         NV_LOCLENGTH_P(x) = size;
+         NV_GLOBLENGTH_P(x) = (glob_size == 0) ? size : glob_size;
+         break;
+      }
+      case SUNDIALS_NVEC_PARHYP:
+      {
+         hypre_Vector *hpv_local = N_VGetVector_ParHyp(x)->local_vector;
+         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
+         hpv_local->data = HostReadWrite();
+         hpv_local->size = size;
+         break;
+      }
+#endif
+      default:
+         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
+   }
+}
+
 SundialsNVector::SundialsNVector()
    : Vector()
 {
-   // MFEM creates and owns the data.
+   // MFEM creates and owns the data,
+   // and provides it to the SUNDIALS NVector.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice());
    own_NVector = 1;
@@ -55,7 +103,8 @@ SundialsNVector::SundialsNVector()
 SundialsNVector::SundialsNVector(int s)
    : Vector(s)
 {
-   // MFEM creates and owns the data.
+   // MFEM creates and owns the data,
+   // and provides it to the SUNDIALS NVector.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice(), data, s);
    own_NVector = 1;
@@ -64,6 +113,7 @@ SundialsNVector::SundialsNVector(int s)
 SundialsNVector::SundialsNVector(N_Vector nv)
    : x(nv)
 {
+   // The SUNDIALS NVector owns the data if it created it.
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
@@ -90,12 +140,20 @@ SundialsNVector::SundialsNVector(N_Vector nv)
 #endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
-         SetDataAndSize(NV_DATA_P(x), NV_LOCLENGTH_P(x));
+      {
+         const bool known = mm.IsKnown(NV_DATA_P(x));
+         size = NV_LENGTH_S(x);
+         data.Wrap(NV_DATA_P(x), NV_LOCLENGTH_P(x), false);
+         if (known) { data.ClearOwnerFlags(); }
          break;
+      }
       case SUNDIALS_NVEC_PARHYP:
       {
          hypre_Vector *hpv_local = N_VGetVector_ParHyp(x)->local_vector;
-         SetDataAndSize(hpv_local->data, hpv_local->size);
+         const bool known = mm.IsKnown(NV_DATA_P(x));
+         size = NV_LENGTH_S(x);
+         data.Wrap(hpv_local->data, hpv_local->size, false);
+         if (known) { data.ClearOwnerFlags(); }
          break;
       }
 #endif
@@ -104,6 +162,22 @@ SundialsNVector::SundialsNVector(N_Vector nv)
    }
    own_NVector = 0;
 }
+
+#ifdef MFEM_USE_MPI
+   SundialsNVector::SundialsNVector(MPI_Comm comm)
+      : Vector()
+   {
+      UseDevice(Device::IsAvailable());
+      x = MakeNVector(comm, UseDevice());
+   }
+
+   SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, int glob_size)
+      : Vector(loc_size)
+   {
+      UseDevice(Device::IsAvailable());
+      x = MakeNVector(comm, UseDevice(), data, loc_size, glob_size);
+   }
+#endif
 
 SundialsNVector::SundialsNVector(const SundialsNVector &y)
    : SundialsNVector(y.size)
@@ -118,97 +192,22 @@ SundialsNVector::~SundialsNVector()
    }
 }
 
-N_Vector_ID SundialsNVector::GetNVectorID() const
-{
-   return N_VGetVectorID(x);
-}
-
-void SundialsNVector::SetSize(int s)
+void SundialsNVector::SetSize(int s, int glob_size)
 {
    Vector::SetSize(s);
-   if (own_NVector)
-   {
-      N_VDestroy(x);
-   }
-   x = MakeNVector(UseDevice(), data, s);
+   _SetDataAndSize_(glob_size);
 }
 
 void SundialsNVector::SetData(double *d)
 {
    Vector::SetData(d);
-   switch (GetNVectorID())
-   {
-      case SUNDIALS_NVEC_SERIAL:
-         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         NV_DATA_S(x) = HostReadWrite();
-         break;
-#ifdef MFEM_USE_CUDA
-      case SUNDIALS_NVEC_CUDA:
-         // MFEM_ASSERT(static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->own_data == SUNFALSE, "invalid cuda N_Vector");
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->host_data = HostReadWrite();
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->device_data = ReadWrite();
-         break;
-#endif
-#ifdef MFEM_USE_MPI
-      case SUNDIALS_NVEC_PARALLEL:
-         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
-         NV_DATA_P(x) = data;
-         NV_LOCLENGTH_P(x) = size;
-         break;
-      case SUNDIALS_NVEC_PARHYP:
-      {
-         hypre_Vector *hpv_local = N_VGetVector_ParHyp(nv)->local_vector;
-         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
-         hpv_local->data = data;
-         break;
-      }
-#endif
-      default:
-         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
-   }
+   _SetDataAndSize_();
 }
 
-void SundialsNVector::SetDataAndSize(double *d, int s)
+void SundialsNVector::SetDataAndSize(double *d, int s, int glob_size)
 {
    Vector::SetDataAndSize(d, s);
-   switch (GetNVectorID())
-   {
-      case SUNDIALS_NVEC_SERIAL:
-         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
-         NV_DATA_S(x) = HostReadWrite();
-         NV_LENGTH_S(x) = size;
-         break;
-#ifdef MFEM_USE_CUDA
-      case SUNDIALS_NVEC_CUDA:
-      {
-         auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
-         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
-         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
-         content->host_data = HostReadWrite();
-         content->device_data = ReadWrite();
-         content->length = size;
-         break;
-      }
-#endif
-#ifdef MFEM_USE_MPI
-      case SUNDIALS_NVEC_PARALLEL:
-         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
-         NV_DATA_P(x) = data;
-         NV_LOCLENGTH_P(x) = size;
-         break;
-      case SUNDIALS_NVEC_PARHYP:
-      {
-         hypre_Vector *hpv_local = N_VGetVector_ParHyp(nv)->local_vector;
-         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
-         hpv_local->data = data;
-         hpv_local->size = size;
-         break;
-      }
-#endif
-      default:
-         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
-   }
+   _SetDataAndSize_(glob_size);
 }
 
 N_Vector SundialsNVector::MakeNVector(bool use_device)
@@ -226,7 +225,7 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 #else
    x = N_VNewEmpty_Serial(0);
 #endif
-   x->ops->nvdotprod = SundialsNVector::NvecDot;
+
    return x;
 }
 
@@ -246,33 +245,68 @@ N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int 
 #else
    x = N_VMake_Serial(s, mfem::ReadWrite(data, s, false));
 #endif
-   x->ops->nvdotprod = SundialsNVector::NvecDot;
+
    return x;
 }
 
 #ifdef MFEM_USE_MPI
-N_Vector SundialsNVector::MakeEmptyParNVector(MPI_Comm comm)
+N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 {
-   N_Vector nvecx;
-   if (Device::IsAvailable())
+   N_Vector x;
+
+   if (comm == MPI_COMM_NULL)
    {
-      MFEM_ABORT("device is not supported by the sundials interface");
+      x = MakeNVector(use_device);
    }
    else
    {
-      nvecx = N_VNewEmpty_Parallel(comm, 0, 0);
+#ifdef MFEM_USE_CUDA
+      if (use_device)
+      {
+         MFEM_ABORT("MPI+CUDA not yet supported by sundials interface");
+      }
+      else
+      {
+         x = N_VNewEmpty_Parallel(comm, 0, 0);
+      }
+#else
+      x = N_VNewEmpty_Parallel(comm, 0, 0);
+#endif
    }
-   nvecx->ops->nvdotprod = SundialsNVector::NvecDot;
-   return nvecx;
+
+   return x;
 }
+
+N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<double> data,
+                                      int loc_size, int glob_size)
+{
+   N_Vector x;
+
+   if (comm == MPI_COMM_NULL)
+   {
+      x = MakeNVector(use_device);
+   }
+   else
+   {
+#ifdef MFEM_USE_CUDA
+      if (use_device)
+      {
+         MFEM_ABORT("MPI+CUDA not yet supported by sundials interface");
+      }
+      else
+      {
+         x = N_VMake_Parallel(comm, loc_size, glob_size,
+                              mfem::ReadWrite(data, loc_size, false));
+      }
+#else
+   }
+   x = N_VMake_Parallel(comm, loc_size, glob_size,
+                        mfem::ReadWrite(data, loc_size, false));
 #endif
 
-double SundialsNVector::NvecDot(N_Vector x, N_Vector y)
-{
-   SundialsNVector X(x);
-   SundialsNVector Y(y);
-   return X * Y;
+   return x;
 }
+#endif
 
 
 // ---------------------------------------------------------------------------
@@ -365,17 +399,7 @@ CVODESolver::CVODESolver(int lmm)
 CVODESolver::CVODESolver(MPI_Comm comm, int lmm)
    : lmm_type(lmm), step_mode(CV_NORMAL)
 {
-   if (comm == MPI_COMM_NULL)
-   {
-      // Allocate an empty NVector
-      y = SundialsNVector::MakeEmptyNVector();
-      MFEM_VERIFY(y, "error in SundialsNVector::MakeEmptyNVector()");
-   }
-   else
-   {
-      y = SundialsNVector::MakeEmptyParNVector(comm);
-      MFEM_VERIFY(y, "error in SundialsNVector::MakeEmptyParNVector()");
-   }
+   Y = new SundialsNVector(comm);
 }
 #endif // MFEM_USE_MPI
 
@@ -394,7 +418,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    {
 #ifdef MFEM_USE_MPI
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                    Y->Communicator());
 #endif
    }
 
@@ -412,10 +436,10 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       else
       {
 #ifdef MFEM_USE_MPI
-         int l_resize = (NV_LOCLENGTH_P(y) != local_size) ||
+         int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                       Y->Communicator());
 #endif
       }
 
@@ -429,13 +453,15 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
-      Y->SetSize(local_size);
-
-#ifdef MFEM_USE_MPI
-      if (Parallel())
+      if (!Parallel())
       {
-         NV_GLOBLENGTH_P(y) = global_size;
-         saved_global_size  = global_size;
+         Y->SetSize(local_size);
+      }
+#ifdef MFEM_USE_MPI
+      else
+      {
+         Y->SetSize(local_size, global_size);
+         saved_global_size = global_size;
       }
 #endif
 
@@ -465,14 +491,9 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   Y->SetDataAndSize(x.GetMemory(), x.Size());
+   Y->SetData(x.GetMemory());
 
-   if (Parallel())
-   {
-#ifdef MFEM_USE_MPI
-      MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");
-#endif
-   }
+   MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize CVODE memory if needed
    if (reinit)
@@ -746,17 +767,7 @@ ARKStepSolver::ARKStepSolver(MPI_Comm comm, Type type)
    : rk_type(type), step_mode(ARK_NORMAL),
      use_implicit(type == IMPLICIT || type == IMEX)
 {
-   if (comm == MPI_COMM_NULL)
-   {
-      // Allocate an empty NVector
-      y = SundialsNVector::MakeEmptyNVector();
-      MFEM_VERIFY(y, "error in SundialsNVector::MakeEmptyNVector()");
-   }
-   else
-   {
-      y = SundialsNVector::MakeEmptyParNVector(comm);
-      MFEM_VERIFY(y, "error in SundialsNVector::MakeEmptyParNVector()");
-   }
+   Y = new SundialsNVector(comm);
 }
 #endif
 
@@ -775,7 +786,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    {
 #ifdef MFEM_USE_MPI
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                    Y->Communicator());
 #endif
    }
 
@@ -793,10 +804,10 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
       else
       {
 #ifdef MFEM_USE_MPI
-         int l_resize = (NV_LOCLENGTH_P(y) != local_size) ||
+         int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                       Y->Communicator());
 #endif
       }
 
@@ -810,13 +821,15 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
-      Y->SetSize(local_size);
-
-#ifdef MFEM_USE_MPI
-      if (Parallel())
+      if (!Parallel())
       {
-         NV_GLOBLENGTH_P(y) = global_size;
-         saved_global_size  = global_size;
+         Y->SetSize(local_size);
+      }
+#ifdef MFEM_USE_MPI
+      else
+      {
+         Y->SetSize(local_size, global_size);
+         saved_global_size = global_size;
       }
 #endif
 
@@ -854,14 +867,9 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
 
 void ARKStepSolver::Step(Vector &x, double &t, double &dt)
 {
-   Y->SetDataAndSize(x.GetMemory(), x.Size());
+   Y->SetData(x.GetMemory());
 
-   if (Parallel())
-   {
-#ifdef MFEM_USE_MPI
-      MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");
-#endif
-   }
+   MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize ARKStep memory if needed
    if (reinit)
@@ -1193,24 +1201,22 @@ KINSolver::KINSolver(MPI_Comm comm, int strategy, bool oper_grad)
    : global_strategy(strategy), use_oper_grad(oper_grad), y_scale(NULL),
      f_scale(NULL), jacobian(NULL), maa(0)
 {
+   Y = new SundialsNVector();
    if (comm == MPI_COMM_NULL)
    {
 
-      // Allocate empty serial N_Vectors
-      y = N_VNewEmpty_Serial(0);
       y_scale = N_VNewEmpty_Serial(0);
       f_scale = N_VNewEmpty_Serial(0);
-      MFEM_VERIFY(y && y_scale && f_scale, "error in N_VNewEmpty_Serial()");
+      MFEM_VERIFY(y_scale && f_scale, "error in N_VNewEmpty_Serial()");
 
    }
    else
    {
 
       // Allocate empty parallel N_Vectors
-      y = N_VNewEmpty_Parallel(comm, 0, 0);
       y_scale = N_VNewEmpty_Parallel(comm, 0, 0);
       f_scale = N_VNewEmpty_Parallel(comm, 0, 0);
-      MFEM_VERIFY(y && y_scale && f_scale, "error in N_VNewEmpty_Parallel()");
+      MFEM_VERIFY(y_scale && f_scale, "error in N_VNewEmpty_Parallel()");
 
    }
 
@@ -1237,7 +1243,7 @@ void KINSolver::SetOperator(const Operator &op)
    {
 #ifdef MFEM_USE_MPI
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                    Y->Communicator());
 #endif
    }
 
@@ -1252,10 +1258,10 @@ void KINSolver::SetOperator(const Operator &op)
       else
       {
 #ifdef MFEM_USE_MPI
-         int l_resize = (NV_LOCLENGTH_P(y) != local_size) ||
+         int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                       Y->Communicator());
 #endif
       }
 
@@ -1269,14 +1275,21 @@ void KINSolver::SetOperator(const Operator &op)
 
    if (!sundials_mem)
    {
-      Y->SetSize(local_size);
+      if (!Parallel())
+      {
+         Y->SetSize(local_size);
+      }
+#ifdef MFEM_USE_MPI
+      else
+      {
+         Y->SetSize(local_size, global_size);
+         saved_global_size = global_size;
+      }
+#endif
 
       if (Parallel())
       {
 #ifdef MFEM_USE_MPI
-         NV_LOCLENGTH_P(y)        = local_size;
-         NV_GLOBLENGTH_P(y)       = global_size;
-         NV_DATA_P(y)             = new double[local_size](); // value-initialize
          NV_LOCLENGTH_P(y_scale)  = local_size;
          NV_GLOBLENGTH_P(y_scale) = global_size;
          NV_DATA_P(y_scale)       = NULL;
@@ -1329,15 +1342,6 @@ void KINSolver::SetOperator(const Operator &op)
             flag = KINSetJacTimesVecFn(sundials_mem, KINSolver::GradientMult);
             MFEM_ASSERT(flag == KIN_SUCCESS, "error in KINSetJacTimesVecFn()");
          }
-      }
-
-      // Delete the allocated data in y.
-      if (Parallel())
-      {
-#ifdef MFEM_USE_MPI
-         delete [] NV_DATA_P(y);
-         NV_DATA_P(y) = NULL;
-#endif
       }
    }
 }
@@ -1424,7 +1428,7 @@ void KINSolver::Mult(const Vector&, Vector &x) const
       {
          double lnorm = norm;
          MPI_Allreduce(&lnorm, &norm, 1, MPI_DOUBLE, MPI_MAX,
-                       *static_cast<MPI_Comm*>(N_VGetCommunicator(y)));
+                       Y->Communicator());
       }
 #endif
       if (abs_tol > rel_tol * norm)
@@ -1473,13 +1477,12 @@ void KINSolver::Mult(Vector &x,
    {
 
 #ifdef MFEM_USE_MPI
-      NV_DATA_P(y) = x.GetData();
-      MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");
+      Y->SetData(x.GetMemory());
       NV_DATA_P(y_scale) = x_scale.GetData();
       NV_DATA_P(f_scale) = fx_scale.GetData();
 
       int rank;
-      MPI_Comm_rank(NV_COMM_P(y), &rank);
+      MPI_Comm_rank(Y->Communicator(), &rank);
       if (rank == 0)
       {
          flag = KINSetPrintLevel(sundials_mem, print_level);
