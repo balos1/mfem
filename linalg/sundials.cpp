@@ -226,6 +226,8 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
    x = N_VNewEmpty_Serial(0);
 #endif
 
+   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
+
    return x;
 }
 
@@ -245,6 +247,8 @@ N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int 
 #else
    x = N_VMake_Serial(s, mfem::ReadWrite(data, s, false));
 #endif
+
+   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
 
    return x;
 }
@@ -273,6 +277,8 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
       x = N_VNewEmpty_Parallel(comm, 0, 0);
 #endif
    }
+
+   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
 
    return x;
 }
@@ -303,6 +309,8 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<dou
    x = N_VMake_Parallel(comm, loc_size, glob_size,
                         mfem::ReadWrite(data, loc_size, false));
 #endif
+
+   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
 
    return x;
 }
@@ -1187,9 +1195,8 @@ KINSolver::KINSolver(int strategy, bool oper_grad)
 {
    // Allocate empty serial N_Vectors
    Y = new SundialsNVector();
-   y_scale = N_VNewEmpty_Serial(0);
-   f_scale = N_VNewEmpty_Serial(0);
-   MFEM_VERIFY(*Y && y_scale && f_scale, "Error in N_VNewEmpty_Serial().");
+   y_scale = new SundialsNVector();
+   f_scale = new SundialsNVector();
 
    // Default abs_tol and print_level
    abs_tol     = pow(UNIT_ROUNDOFF, 1.0/3.0);
@@ -1201,24 +1208,9 @@ KINSolver::KINSolver(MPI_Comm comm, int strategy, bool oper_grad)
    : global_strategy(strategy), use_oper_grad(oper_grad), y_scale(NULL),
      f_scale(NULL), jacobian(NULL), maa(0)
 {
-   Y = new SundialsNVector();
-   if (comm == MPI_COMM_NULL)
-   {
-
-      y_scale = N_VNewEmpty_Serial(0);
-      f_scale = N_VNewEmpty_Serial(0);
-      MFEM_VERIFY(y_scale && f_scale, "error in N_VNewEmpty_Serial()");
-
-   }
-   else
-   {
-
-      // Allocate empty parallel N_Vectors
-      y_scale = N_VNewEmpty_Parallel(comm, 0, 0);
-      f_scale = N_VNewEmpty_Parallel(comm, 0, 0);
-      MFEM_VERIFY(y_scale && f_scale, "error in N_VNewEmpty_Parallel()");
-
-   }
+   Y = new SundialsNVector(comm);
+   y_scale = new SundialsNVector(comm);
+   f_scale = new SundialsNVector(comm);
 
    // Default abs_tol and print_level
    abs_tol     = pow(UNIT_ROUNDOFF, 1.0/3.0);
@@ -1283,22 +1275,11 @@ void KINSolver::SetOperator(const Operator &op)
       else
       {
          Y->SetSize(local_size, global_size);
+         y_scale->SetSize(local_size, global_size);
+         f_scale->SetSize(local_size, global_size);
          saved_global_size = global_size;
       }
 #endif
-
-      if (Parallel())
-      {
-#ifdef MFEM_USE_MPI
-         NV_LOCLENGTH_P(y_scale)  = local_size;
-         NV_GLOBLENGTH_P(y_scale) = global_size;
-         NV_DATA_P(y_scale)       = NULL;
-         NV_LOCLENGTH_P(f_scale)  = local_size;
-         NV_GLOBLENGTH_P(f_scale) = global_size;
-         NV_DATA_P(f_scale)       = NULL;
-         saved_global_size        = global_size;
-#endif
-      }
 
       // Create the solver memory
       sundials_mem = KINCreate();
@@ -1463,13 +1444,12 @@ void KINSolver::Mult(Vector &x,
    flag = KINSetNumMaxIters(sundials_mem, max_iter);
    MFEM_ASSERT(flag == KIN_SUCCESS, "KINSetNumMaxIters() failed!");
 
+   Y->SetData(x.GetMemory());
+   y_scale->SetData(const_cast<Memory<double>&>(x_scale.GetMemory()));
+   f_scale->SetData(const_cast<Memory<double>&>(fx_scale.GetMemory()));
+
    if (!Parallel())
    {
-
-      Y->SetData(x.GetMemory());
-      NV_DATA_S(y_scale) = x_scale.GetData();
-      NV_DATA_S(f_scale) = fx_scale.GetData();
-
       flag = KINSetPrintLevel(sundials_mem, print_level);
       MFEM_VERIFY(flag == KIN_SUCCESS, "KINSetPrintLevel() failed!");
    }
@@ -1477,10 +1457,6 @@ void KINSolver::Mult(Vector &x,
    {
 
 #ifdef MFEM_USE_MPI
-      Y->SetData(x.GetMemory());
-      NV_DATA_P(y_scale) = x_scale.GetData();
-      NV_DATA_P(f_scale) = fx_scale.GetData();
-
       int rank;
       MPI_Comm_rank(Y->Communicator(), &rank);
       if (rank == 0)
@@ -1495,7 +1471,7 @@ void KINSolver::Mult(Vector &x,
    if (!iterative_mode) { x = 0.0; }
 
    // Solve the nonlinear system
-   flag = KINSol(sundials_mem, *Y, global_strategy, y_scale, f_scale);
+   flag = KINSol(sundials_mem, *Y, global_strategy, *y_scale, *f_scale);
    converged = (flag >= 0);
 
    // Get number of nonlinear iterations
@@ -1512,8 +1488,8 @@ void KINSolver::Mult(Vector &x,
 KINSolver::~KINSolver()
 {
    delete Y;
-   N_VDestroy(y_scale);
-   N_VDestroy(f_scale);
+   delete y_scale;
+   delete f_scale;
    SUNMatDestroy(A);
    SUNLinSolFree(LSA);
    KINFree(&sundials_mem);

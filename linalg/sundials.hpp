@@ -481,7 +481,8 @@ class KINSolver : public NewtonSolver, public SundialsSolver
 protected:
    int global_strategy;               ///< KINSOL solution strategy
    bool use_oper_grad;                ///< use the Jv prod function
-   mutable N_Vector y_scale, f_scale; ///< scaling vectors
+//    mutable N_Vector y_scale, f_scale; ///< scaling vectors
+   mutable SundialsNVector *y_scale, *f_scale; ///< scaling vectors
    const Operator *jacobian;          ///< stores oper->GetGradient()
    int maa;                           ///< number of acceleration vectors
 
