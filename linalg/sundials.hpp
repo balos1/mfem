@@ -64,9 +64,6 @@ public:
    /// Creates an empty SundialsNVector.
    SundialsNVector();
 
-   /// Creates a SundialsNVector with given size.
-   SundialsNVector(int s);
-
    /// Creates a SundialsNVector out of a SUNDIALS N_Vector object.
    /** The N_Vector @nv must be destroyed outside. */
    SundialsNVector(N_Vector nv);
@@ -79,10 +76,7 @@ public:
    SundialsNVector(MPI_Comm comm, int loc_size, int glob_size);
 #endif
 
-   /// Creates vector compatible with y
-   SundialsNVector(const SundialsNVector &y);
-
-   /// Calls SUNDIALS N_VDestroy function.
+   /// Calls SUNDIALS N_VDestroy function if the N_Vector is owned by 'this'.
    ~SundialsNVector();
 
    /// Returns the N_Vector_ID for the internal N_Vector.

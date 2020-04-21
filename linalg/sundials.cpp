@@ -49,7 +49,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         // MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
+         MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
          dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
          NV_DATA_S(x) = HostReadWrite();
          NV_LENGTH_S(x) = size;
@@ -59,7 +59,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_CUDA:
       {
          auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
-         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
+         MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
          content->host_data = HostReadWrite();
          content->device_data = ReadWrite();
@@ -70,7 +70,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
       {
-         // MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
+         MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
          NV_DATA_P(x) = HostReadWrite();
          NV_LOCLENGTH_P(x) = size;
          NV_GLOBLENGTH_P(x) = (glob_size == 0) ? size : glob_size;
@@ -79,7 +79,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_PARHYP:
       {
          hypre_Vector *hpv_local = N_VGetVector_ParHyp(x)->local_vector;
-         // MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
+         MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
          hpv_local->data = HostReadWrite();
          hpv_local->size = size;
          break;
@@ -97,16 +97,6 @@ SundialsNVector::SundialsNVector()
    // and provides it to the SUNDIALS NVector.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice());
-   own_NVector = 1;
-}
-
-SundialsNVector::SundialsNVector(int s)
-   : Vector(s)
-{
-   // MFEM creates and owns the data,
-   // and provides it to the SUNDIALS NVector.
-   UseDevice(Device::IsAvailable());
-   x = MakeNVector(UseDevice(), data, s);
    own_NVector = 1;
 }
 
@@ -178,11 +168,6 @@ SundialsNVector::SundialsNVector(N_Vector nv)
       x = MakeNVector(comm, UseDevice(), data, loc_size, glob_size);
    }
 #endif
-
-SundialsNVector::SundialsNVector(const SundialsNVector &y)
-   : SundialsNVector(y.size)
-{
-}
 
 SundialsNVector::~SundialsNVector()
 {
