@@ -345,14 +345,14 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
    // At this point the up-to-date data for N_Vector y and ydot is on the device.
-   const SundialsNVector Y(y);
-   SundialsNVector Ydot(ydot);
+   const SundialsNVector mfem_y(y);
+   SundialsNVector mfem_ydot(ydot);
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
 
    // Compute y' = f(t, y)
    self->f->SetTime(t);
-   self->f->Mult(Y, Ydot);
+   self->f->Mult(mfem_y, mfem_ydot);
 
    // Return success
    return (0);
@@ -363,23 +363,23 @@ int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
                              void*, N_Vector, N_Vector, N_Vector)
 {
    // Get data from N_Vectors
-   const SundialsNVector Y(y);
-   const SundialsNVector FY(fy);
+   const SundialsNVector mfem_y(y);
+   const SundialsNVector mfem_fy(fy);
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(A));
 
    // Compute the linear system
    self->f->SetTime(t);
-   return (self->f->SUNImplicitSetup(Y, FY, jok, jcur, gamma));
+   return (self->f->SUNImplicitSetup(mfem_y, mfem_fy, jok, jcur, gamma));
 }
 
 int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                              N_Vector b, realtype tol)
 {
-   SundialsNVector X(x);
-   const SundialsNVector B(b);
+   SundialsNVector mfem_x(x);
+   const SundialsNVector mfem_b(b);
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(LS));
    // Solve the linear system
-   return (self->f->SUNImplicitSolve(B, X, tol));
+   return (self->f->SUNImplicitSolve(mfem_b, mfem_x, tol));
 }
 
 CVODESolver::CVODESolver(int lmm)
@@ -638,8 +638,8 @@ int ARKStepSolver::RHS1(realtype t, const N_Vector y, N_Vector ydot,
                         void *user_data)
 {
    // Get data from N_Vectors
-   const SundialsNVector Y(y);
-   SundialsNVector Ydot(ydot);
+   const SundialsNVector mfem_y(y);
+   SundialsNVector mfem_ydot(ydot);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(user_data);
 
    // Compute f(t, y) in y' = f(t, y) or fe(t, y) in y' = fe(t, y) + fi(t, y)
@@ -648,7 +648,7 @@ int ARKStepSolver::RHS1(realtype t, const N_Vector y, N_Vector ydot,
    {
       self->f->SetEvalMode(TimeDependentOperator::ADDITIVE_TERM_1);
    }
-   self->f->Mult(Y, Ydot);
+   self->f->Mult(mfem_y, mfem_ydot);
 
    // Return success
    return (0);
@@ -658,14 +658,14 @@ int ARKStepSolver::RHS2(realtype t, const N_Vector y, N_Vector ydot,
                         void *user_data)
 {
    // Get data from N_Vectors
-   const SundialsNVector Y(y);
-   SundialsNVector Ydot(ydot);
+   const SundialsNVector mfem_y(y);
+   SundialsNVector mfem_ydot(ydot);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(user_data);
 
    // Compute fi(t, y) in y' = fe(t, y) + fi(t, y)
    self->f->SetTime(t);
    self->f->SetEvalMode(TimeDependentOperator::ADDITIVE_TERM_2);
-   self->f->Mult(Y, Ydot);
+   self->f->Mult(mfem_y, mfem_ydot);
 
    // Return success
    return (0);
@@ -677,8 +677,8 @@ int ARKStepSolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
                                void*, N_Vector, N_Vector, N_Vector)
 {
    // Get data from N_Vectors
-   const SundialsNVector Y(y);
-   const SundialsNVector FY(fy);
+   const SundialsNVector mfem_y(y);
+   const SundialsNVector mfem_fy(fy);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(GET_CONTENT(A));
 
    // Compute the linear system
@@ -687,14 +687,14 @@ int ARKStepSolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
    {
       self->f->SetEvalMode(TimeDependentOperator::ADDITIVE_TERM_2);
    }
-   return (self->f->SUNImplicitSetup(Y, FY, jok, jcur, gamma));
+   return (self->f->SUNImplicitSetup(mfem_y, mfem_fy, jok, jcur, gamma));
 }
 
 int ARKStepSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                                N_Vector b, realtype tol)
 {
-   SundialsNVector X(x);
-   const SundialsNVector B(b);
+   SundialsNVector mfem_x(x);
+   const SundialsNVector mfem_b(b);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(GET_CONTENT(LS));
 
    // Solve the linear system
@@ -702,7 +702,7 @@ int ARKStepSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
    {
       self->f->SetEvalMode(TimeDependentOperator::ADDITIVE_TERM_2);
    }
-   return (self->f->SUNImplicitSolve(B, X, tol));
+   return (self->f->SUNImplicitSolve(mfem_b, mfem_x, tol));
 }
 
 int ARKStepSolver::MassSysSetup(realtype t, SUNMatrix M,
@@ -718,34 +718,34 @@ int ARKStepSolver::MassSysSetup(realtype t, SUNMatrix M,
 int ARKStepSolver::MassSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                                 N_Vector b, realtype tol)
 {
-   SundialsNVector X(x);
-   const SundialsNVector B(b);
+   SundialsNVector mfem_x(x);
+   const SundialsNVector mfem_b(b);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(GET_CONTENT(LS));
 
    // Solve the mass matrix system
-   return (self->f->SUNMassSolve(B, X, tol));
+   return (self->f->SUNMassSolve(mfem_b, mfem_x, tol));
 }
 
 int ARKStepSolver::MassMult1(SUNMatrix M, N_Vector x, N_Vector v)
 {
-   const SundialsNVector X(x);
-   SundialsNVector V(v);
+   const SundialsNVector mfem_x(x);
+   SundialsNVector mfem_v(v);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(GET_CONTENT(M));
 
    // Compute the mass matrix-vector product
-   return (self->f->SUNMassMult(X, V));
+   return (self->f->SUNMassMult(mfem_x, mfem_v));
 }
 
 int ARKStepSolver::MassMult2(N_Vector x, N_Vector v, realtype t,
                              void* mtimes_data)
 {
-   const SundialsNVector X(x);
-   SundialsNVector V(v);
+   const SundialsNVector mfem_x(x);
+   SundialsNVector mfem_v(v);
    ARKStepSolver *self = static_cast<ARKStepSolver*>(mtimes_data);
 
    // Compute the mass matrix-vector product
    self->f->SetTime(t);
-   return (self->f->SUNMassMult(X, V));
+   return (self->f->SUNMassMult(mfem_x, mfem_v));
 }
 
 ARKStepSolver::ARKStepSolver(Type type)
@@ -1109,12 +1109,12 @@ ARKStepSolver::~ARKStepSolver()
 // Wrapper for evaluating the nonlinear residual F(u) = 0
 int KINSolver::Mult(const N_Vector u, N_Vector fu, void *user_data)
 {
-   const SundialsNVector U(u);
-   SundialsNVector FU(fu);
+   const SundialsNVector mfem_u(u);
+   SundialsNVector mfem_fu(fu);
    KINSolver *self = static_cast<KINSolver*>(user_data);
 
    // Compute the non-linear action F(u).
-   self->oper->Mult(U, FU);
+   self->oper->Mult(mfem_u, mfem_fu);
 
    // Return success
    return 0;
@@ -1124,8 +1124,8 @@ int KINSolver::Mult(const N_Vector u, N_Vector fu, void *user_data)
 int KINSolver::GradientMult(N_Vector v, N_Vector Jv, N_Vector u,
                             booleantype *new_u, void *user_data)
 {
-   const SundialsNVector V(v);
-   SundialsNVector JV(Jv);
+   const SundialsNVector mfem_v(v);
+   SundialsNVector mfem_Jv(Jv);
    KINSolver *self = static_cast<KINSolver*>(user_data);
 
    // Update Jacobian information if needed
@@ -1137,7 +1137,7 @@ int KINSolver::GradientMult(N_Vector v, N_Vector Jv, N_Vector u,
    }
 
    // Compute the Jacobian-vector product
-   self->jacobian->Mult(V, JV);
+   self->jacobian->Mult(mfem_v, mfem_Jv);
 
    // Return success
    return 0;
@@ -1147,11 +1147,11 @@ int KINSolver::GradientMult(N_Vector v, N_Vector Jv, N_Vector u,
 int KINSolver::LinSysSetup(N_Vector u, N_Vector, SUNMatrix J,
                            void *, N_Vector , N_Vector )
 {
-   const SundialsNVector U(u);
+   const SundialsNVector mfem_u(u);
    KINSolver *self = static_cast<KINSolver*>(GET_CONTENT(J));
 
    // Update the Jacobian
-   self->jacobian = &self->oper->GetGradient(U);
+   self->jacobian = &self->oper->GetGradient(mfem_u);
 
    // Set the Jacobian solve operator
    self->prec->SetOperator(*self->jacobian);
@@ -1164,11 +1164,11 @@ int KINSolver::LinSysSetup(N_Vector u, N_Vector, SUNMatrix J,
 int KINSolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector u,
                            N_Vector b, realtype)
 {
-   SundialsNVector U(u), mfem_b(b);
+   SundialsNVector mfem_u(u), mfem_b(b);
    KINSolver *self = static_cast<KINSolver*>(GET_CONTENT(LS));
 
    // Solve for u = [J(u)]^{-1} b, maybe approximately.
-   self->prec->Mult(mfem_b, U);
+   self->prec->Mult(mfem_b, mfem_u);
 
    // Return success
    return (0);
