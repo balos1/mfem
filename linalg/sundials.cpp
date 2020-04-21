@@ -167,7 +167,7 @@ SundialsNVector::SundialsNVector(N_Vector nv)
       x = MakeNVector(comm, UseDevice());
    }
 
-   SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, int glob_size)
+   SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, long glob_size)
       : Vector(loc_size)
    {
       UseDevice(Device::IsAvailable());
@@ -183,7 +183,7 @@ SundialsNVector::~SundialsNVector()
    }
 }
 
-void SundialsNVector::SetSize(int s, int glob_size)
+void SundialsNVector::SetSize(int s, long glob_size)
 {
    Vector::SetSize(s);
    _SetNvecDataAndSize_(glob_size);
@@ -195,7 +195,7 @@ void SundialsNVector::SetData(double *d)
    _SetNvecDataAndSize_();
 }
 
-void SundialsNVector::SetDataAndSize(double *d, int s, int glob_size)
+void SundialsNVector::SetDataAndSize(double *d, int s, long glob_size)
 {
    Vector::SetDataAndSize(d, s);
    _SetNvecDataAndSize_(glob_size);
@@ -276,7 +276,7 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 }
 
 N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<double> data,
-                                      int loc_size, int glob_size)
+                                      int loc_size, long glob_size)
 {
    N_Vector x;
 

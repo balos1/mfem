@@ -76,7 +76,7 @@ public:
    SundialsNVector(MPI_Comm comm);
 
    /// Creates a SundialsNVector with the given local and global sizes.
-   SundialsNVector(MPI_Comm comm, int loc_size, int glob_size);
+   SundialsNVector(MPI_Comm comm, int loc_size, long glob_size);
 #endif
 
    /// Calls SUNDIALS N_VDestroy function if the N_Vector is owned by 'this'.
@@ -94,13 +94,13 @@ public:
 #endif
 
    /// Resize the vector to size @a s.
-   void SetSize(int s, int glob_size = 0);
+   void SetSize(int s, long glob_size = 0);
 
    /// Set the vector data.
    void SetData(double *d);
 
    /// Set the vector data and size.
-   void SetDataAndSize(double *d, int s, int glob_size = 0);
+   void SetDataAndSize(double *d, int s, long glob_size = 0);
 
    /// Typecasting to SUNDIALS' N_Vector type
    operator N_Vector() const { return x; }
@@ -137,7 +137,7 @@ public:
        @param[in] loc_size  The size of the vector.
        @param[in] glob_size  The global size of the vector. */
    static N_Vector MakeNVector(MPI_Comm comm, bool use_device, Memory<double> wrap,
-                               int loc_size, int glob_size);
+                               int loc_size, long glob_size);
 #endif
 
 };
