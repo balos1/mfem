@@ -59,7 +59,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_CUDA:
       {
          auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
-         MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
+         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
          content->host_data = HostReadWrite();
          content->device_data = ReadWrite();
