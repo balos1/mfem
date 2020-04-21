@@ -1167,24 +1167,6 @@ Vector::Vector(N_Vector nv)
       case SUNDIALS_NVEC_SERIAL:
          SetDataAndSize(NV_DATA_S(nv), NV_LENGTH_S(nv));
          break;
-#ifdef MFEM_USE_CUDA
-      case SUNDIALS_NVEC_CUDA:
-      {
-         if (!N_VIsManagedMemory_Cuda(nv))
-         {
-            N_VCopyFromDevice_Cuda(nv); // ensure host and device are in sync
-         }
-         size = N_VGetLength_Cuda(nv);
-         double *h_ptr = N_VGetHostArrayPointer_Cuda(nv);
-         double *d_ptr = N_VGetDeviceArrayPointer_Cuda(nv);
-         dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-         const bool known = mm.IsKnown(h_ptr);
-         data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
-         if (known) { data.ClearOwnerFlags(); }
-         UseDevice(true);
-         break;
-      }
-#endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
          SetDataAndSize(NV_DATA_P(nv), NV_LOCLENGTH_P(nv));
@@ -1210,20 +1192,9 @@ void Vector::ToNVector(N_Vector &nv)
    {
       case SUNDIALS_NVEC_SERIAL:
          MFEM_ASSERT(NV_OWN_DATA_S(nv) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostReadWrite());
          NV_DATA_S(nv) = data;
          NV_LENGTH_S(nv) = size;
          break;
-#ifdef MFEM_USE_CUDA
-      case SUNDIALS_NVEC_CUDA:
-         MFEM_ASSERT(((N_VectorContent_Cuda)nv->content)->own_data == SUNFALSE,
-                     "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
-         ((N_VectorContent_Cuda)nv->content)->host_data = HostReadWrite();
-         ((N_VectorContent_Cuda)nv->content)->device_data = ReadWrite();
-         ((N_VectorContent_Cuda)nv->content)->length = size;
-         break;
-#endif
 #ifdef MFEM_USE_MPI
       case SUNDIALS_NVEC_PARALLEL:
          MFEM_ASSERT(NV_OWN_DATA_P(nv) == SUNFALSE, "invalid parallel N_Vector");
