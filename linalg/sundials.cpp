@@ -1131,8 +1131,8 @@ int KINSolver::GradientMult(N_Vector v, N_Vector Jv, N_Vector u,
    // Update Jacobian information if needed
    if (*new_u)
    {
-      const SundialsNVector U(u);
-      self->jacobian = &self->oper->GetGradient(U);
+      const SundialsNVector mfem_u(u);
+      self->jacobian = &self->oper->GetGradient(mfem_u);
       *new_u = SUNFALSE;
    }
 
