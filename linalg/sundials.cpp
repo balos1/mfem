@@ -239,6 +239,7 @@ N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int 
 }
 
 #ifdef MFEM_USE_MPI
+
 N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 {
    N_Vector x;
@@ -260,7 +261,7 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
       }
 #else
       x = N_VNewEmpty_Parallel(comm, 0, 0);
-#endif
+#endif // MFEM_USE_CUDA
    }
 
    MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
@@ -290,16 +291,16 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<dou
                               mfem::ReadWrite(data, loc_size, false));
       }
 #else
+      x = N_VMake_Parallel(comm, loc_size, glob_size,
+                           mfem::ReadWrite(data, loc_size, false));
+#endif // MFEM_USE_CUDA
    }
-   x = N_VMake_Parallel(comm, loc_size, glob_size,
-                        mfem::ReadWrite(data, loc_size, false));
-#endif
 
    MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
 
    return x;
 }
-#endif
+#endif // MFEM_USE_MPI
 
 
 // ---------------------------------------------------------------------------
