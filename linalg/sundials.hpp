@@ -58,7 +58,10 @@ protected:
    friend class SundialsSolver;
 
    /// Set data and length of internal N_Vector x from 'this'.
-   void _SetDataAndSize_(long glob_size = 0);
+   void _SetNvecDataAndSize_(long glob_size = 0);
+
+   /// Set data and length from the internal N_Vector x.
+   void _SetDataAndSize_();
 
 public:
    /// Creates an empty SundialsNVector.

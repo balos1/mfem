@@ -43,8 +43,9 @@ namespace mfem
 // SUNDIALS N_Vector interface functions
 // ---------------------------------------------------------------------------
 
-void SundialsNVector::_SetDataAndSize_(long glob_size)
+void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 {
+   // Set the N_Vector data and length from the Vector data and size.
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
@@ -90,18 +91,7 @@ void SundialsNVector::_SetDataAndSize_(long glob_size)
    }
 }
 
-SundialsNVector::SundialsNVector()
-   : Vector()
-{
-   // MFEM creates and owns the data,
-   // and provides it to the SUNDIALS NVector.
-   UseDevice(Device::IsAvailable());
-   x = MakeNVector(UseDevice());
-   own_NVector = 1;
-}
-
-SundialsNVector::SundialsNVector(N_Vector nv)
-   : x(nv)
+void SundialsNVector::_SetDataAndSize_()
 {
    // The SUNDIALS NVector owns the data if it created it.
    switch (GetNVectorID())
@@ -150,6 +140,22 @@ SundialsNVector::SundialsNVector(N_Vector nv)
       default:
          MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
    }
+}
+
+SundialsNVector::SundialsNVector()
+   : Vector()
+{
+   // MFEM creates and owns the data,
+   // and provides it to the SUNDIALS NVector.
+   UseDevice(Device::IsAvailable());
+   x = MakeNVector(UseDevice());
+   own_NVector = 1;
+}
+
+SundialsNVector::SundialsNVector(N_Vector nv)
+   : x(nv)
+{
+   _SetDataAndSize_();
    own_NVector = 0;
 }
 
@@ -180,19 +186,19 @@ SundialsNVector::~SundialsNVector()
 void SundialsNVector::SetSize(int s, int glob_size)
 {
    Vector::SetSize(s);
-   _SetDataAndSize_(glob_size);
+   _SetNvecDataAndSize_(glob_size);
 }
 
 void SundialsNVector::SetData(double *d)
 {
    Vector::SetData(d);
-   _SetDataAndSize_();
+   _SetNvecDataAndSize_();
 }
 
 void SundialsNVector::SetDataAndSize(double *d, int s, int glob_size)
 {
    Vector::SetDataAndSize(d, s);
-   _SetDataAndSize_(glob_size);
+   _SetNvecDataAndSize_(glob_size);
 }
 
 N_Vector SundialsNVector::MakeNVector(bool use_device)
