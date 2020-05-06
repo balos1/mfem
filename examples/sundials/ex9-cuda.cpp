@@ -282,10 +282,12 @@ int main(int argc, char *argv[])
    //    GLVis visualization.
    GridFunction u(&fes);
    u = 0.0;
-   dbg("u:%p", u.HostRead());
+   dbg("u: %p", u.HostReadWrite());
+   //dbg("u: %p", (double*) (u.Vector::GetMemory()));
+   //dbg("flags:"); u.GetMemory().PrintFlags();
    //mm.PrintPtrs();
    if (strcmp(device_config, "cpu") != 0)
-   { MFEM_VERIFY(mm.IsKnown(u.HostRead()),""); }
+   { MFEM_VERIFY(mm.IsKnown(u.HostReadWrite()),""); }
 
    u.ProjectCoefficient(u0);
 
@@ -399,11 +401,11 @@ int main(int argc, char *argv[])
    for (int ti = 0; !done; )
    {
       double dt_real = min(dt, t_final - t);
-      dbg("ode_solver->Step");
-      dbg("u:%p", u.HostRead());
+      dbg("ode_solver->Step:");
+      u.HostReadWrite();
+      const double dot = u*u;
+      dbg("\033[31;7mdot: %.15f", dot);
       ode_solver->Step(u, t, dt_real);
-      dbg("");
-      dbg("u:%p", u.HostRead());
       ti++;
 
       done = (t >= t_final - 1e-8*dt);
@@ -416,6 +418,7 @@ int main(int argc, char *argv[])
 
          if (visualization)
          {
+            u.HostReadWrite();
             sout << "solution\n" << mesh << u << flush;
          }
 
@@ -433,6 +436,9 @@ int main(int argc, char *argv[])
    {
       ofstream osol("ex9-final.gf");
       osol.precision(precision);
+      //dbg("u: %p", (double*)u.GetMemory());
+      //dbg("flags:"); u.GetMemory().PrintFlags();
+      //dbg("u.save:");
       u.Save(osol);
    }
 

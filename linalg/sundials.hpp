@@ -46,6 +46,8 @@ namespace mfem
 // Base class for interfacing with SUNDIALS packages
 // ---------------------------------------------------------------------------
 
+static Memory<double> m_bkp;
+
 /// Vector interface for SUNDIALS N_Vectors.
 class SundialsNVector : public Vector
 {
@@ -98,6 +100,7 @@ public:
 
    /// Set the vector data.
    void SetData(double *d);
+   void SetVector(Vector &v);
 
    /// Set the vector data and size.
    void SetDataAndSize(double *d, int s, long glob_size = 0);
@@ -113,11 +116,11 @@ public:
 
    /// Gets ownership of the internal N_Vector
    int GetOwnership() const { return own_NVector; }
-   
+
    /// Create a N_Vector.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(bool use_device);
-   
+
    /// Create a N_Vector using @wrap for the data and @s for the size.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
        @param[in] wrap  The data attached to the SUNDIALS N_Vector.
@@ -129,7 +132,7 @@ public:
    /** @param[in] comm  The MPI communicator to use.
        @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(MPI_Comm comm, bool use_device);
-   
+
    /// Create a N_Vector using @wrap for the data and @s for the size.
    /** @param[in] comm  The MPI communicator to use.
        @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
@@ -152,7 +155,8 @@ protected:
    long saved_global_size;    ///< Global vector length on last initialization.
 
    SundialsNVector*   Y;      ///< State vector.
-   SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
+   SUNMatrix
+   A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNMatrix          M;      ///< Mass matrix M.
    SUNLinearSolver    LSA;    ///< Linear solver for A.
    SUNLinearSolver    LSM;    ///< Linear solver for M.

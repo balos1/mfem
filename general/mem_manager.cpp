@@ -320,6 +320,7 @@ inline void MmuDealloc(void *ptr, const size_t bytes)
 /// MMU protection, through ::mprotect with no read/write accesses
 inline void MmuProtect(const void *ptr, const size_t bytes)
 {
+   //dbg("\033[37m%p",ptr);
    if (!::mprotect(const_cast<void*>(ptr), bytes, PROT_NONE)) { return; }
    mfem_error("MMU protection (NONE) error");
 }
@@ -327,6 +328,7 @@ inline void MmuProtect(const void *ptr, const size_t bytes)
 /// MMU un-protection, through ::mprotect with read/write accesses
 inline void MmuAllow(const void *ptr, const size_t bytes)
 {
+   //dbg("  %p",ptr);
    const int RW = PROT_READ | PROT_WRITE;
    if (!::mprotect(const_cast<void*>(ptr), bytes, RW)) { return; }
    mfem_error("MMU protection (R/W) error");
@@ -626,6 +628,8 @@ private:
 #elif defined(MFEM_USE_HIP)
             return new HipDeviceMemorySpace();
 #else
+            // External HOST pointers can ask for DEVICE in DEVICE_DEBUG mode
+            return new StdDeviceMemorySpace();
             MFEM_ABORT("No device memory controller!");
             break;
 #endif
@@ -763,6 +767,8 @@ bool MemoryManager::MemoryClassCheck_(MemoryClass mc, void *h_ptr,
    const bool known = mm.IsKnown(h_ptr);
    const bool alias = mm.IsAlias(h_ptr);
    const bool check = known || ((flags & Mem::ALIAS) && alias);
+   // If not known or an alias, might be an external pointer
+   //if (!check) { return true; }
    MFEM_VERIFY(check,"");
    const internal::Memory &mem =
       (flags & Mem::ALIAS) ?
@@ -875,6 +881,7 @@ void MemoryManager::SyncAlias_(const void *base_h_ptr, void *alias_h_ptr,
                                size_t alias_bytes, unsigned base_flags,
                                unsigned &alias_flags)
 {
+   dbg("");
    // This is called only when (base_flags & Mem::REGISTERED) is true.
    // Note that (alias_flags & REGISTERED) may not be true.
    MFEM_ASSERT(alias_flags & Mem::ALIAS, "not an alias");
@@ -1092,6 +1099,9 @@ void MemoryManager::Insert(void *h_ptr, size_t bytes,
    if (res.second == false)
    {
       auto &m = res.first->second;
+      if (m.bytes < bytes) { dbg("m.bytes:%d, bytes:%d", m.bytes, bytes); }
+      if (m.h_mt != h_mt) { dbg("m.h_mt:%d, h_mt:%d", m.h_mt, h_mt); }
+      if (m.d_mt != d_mt) { dbg("m.d_mt:%d, d_mt:%d", m.d_mt, d_mt); }
       MFEM_VERIFY(m.bytes >= bytes && m.h_mt == h_mt && m.d_mt == d_mt,
                   "Address already present with different attributes!");
    }

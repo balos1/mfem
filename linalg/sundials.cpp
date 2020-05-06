@@ -42,18 +42,23 @@ namespace mfem
 // ---------------------------------------------------------------------------
 // SUNDIALS N_Vector interface functions
 // ---------------------------------------------------------------------------
+//static Memory<double> u_mem_bkp;
 
+// Set data and length of internal N_Vector x from 'this'.
 void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 {
+   dbg("\033[1;32mMFEM => SUNDIALS: %p", HostReadWrite());
    // Set the N_Vector data and length from the Vector data and size.
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
       {
+         dbg("\033[1;32mSUNDIALS_NVEC_SERIAL: h:%p d:%p sz:%d",
+             HostReadWrite(), Read(), size);
          MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
          NV_DATA_S(x) = HostReadWrite();
          NV_LENGTH_S(x) = size;
+         ReadWrite();
          break;
       }
 #ifdef MFEM_USE_CUDA
@@ -91,17 +96,46 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
    }
 }
 
+// Set data and length from the internal N_Vector x.
 void SundialsNVector::_SetDataAndSize_()
 {
+   dbg("\033[1;33mSUNDIALS => MFEM: %p", NV_DATA_S(x));
    // The SUNDIALS NVector owns the data if it created it.
    switch (GetNVectorID())
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         const bool known = mm.IsKnown(NV_DATA_S(x));
          size = NV_LENGTH_S(x);
-         data.Wrap(NV_DATA_S(x), NV_LENGTH_S(x), false);
-         if (known) { data.ClearOwnerFlags(); }
+         const bool known = mm.IsKnown(NV_DATA_S(x));
+         const bool alias = mm.IsAlias(NV_DATA_S(x));
+         dbg("%sknown", known?"\033[32m":"\033[31mNot ");
+         dbg("%salias", alias?"\033[32m":"\033[31mNot ");
+         if (!known)
+         {
+            //data.Delete();
+            data.Wrap(NV_DATA_S(x), NV_LENGTH_S(x), MemoryType::HOST, false);
+            data.UseDevice(true);
+            dbg("\033[1;33mSUNDIALS_NVEC_SERIAL: h:%p d:%p",
+                data.ReadWrite(MemoryClass::HOST, Size()),
+                data.Read(MemoryClass::DEVICE, Size()));
+         }
+         else
+         {
+            //data.Wrap(NV_DATA_S(x), NV_LENGTH_S(x), false);
+            //MakeRef(*u_bkp, 0, u_bkp->Size());
+            //data.MakeAlias(u_bkp->GetMemory(), 0, Size());
+            data.MakeAlias(m_bkp, 0, Size());
+            //dbg("m_bkp flags:"); m_bkp.PrintFlags();
+            //data.SyncAlias(m_bkp, Size());
+            data.UseDevice(true);
+            //data.UseDevice(true);
+            /*dbg("\033[1;33mSUNDIALS_NVEC_SERIAL: h:%p d:%p",
+                data.ReadWrite(MemoryClass::HOST, Size()),
+                data.Read(MemoryClass::DEVICE, Size()));*/
+            //data.ClearOwnerFlags();
+         }
+         HostReadWrite();
+         //dbg("flags:"); data.PrintFlags();
          break;
       }
 #ifdef MFEM_USE_CUDA
@@ -145,34 +179,37 @@ void SundialsNVector::_SetDataAndSize_()
 SundialsNVector::SundialsNVector()
    : Vector()
 {
+   dbg("");
    // MFEM creates and owns the data,
    // and provides it to the SUNDIALS NVector.
    UseDevice(Device::IsAvailable());
    x = MakeNVector(UseDevice());
    own_NVector = 1;
+   dbg("%p %d", (double*)data, size);
 }
 
 SundialsNVector::SundialsNVector(N_Vector nv)
    : x(nv)
 {
+   dbg("");
    _SetDataAndSize_();
    own_NVector = 0;
 }
 
 #ifdef MFEM_USE_MPI
-   SundialsNVector::SundialsNVector(MPI_Comm comm)
-      : Vector()
-   {
-      UseDevice(Device::IsAvailable());
-      x = MakeNVector(comm, UseDevice());
-   }
+SundialsNVector::SundialsNVector(MPI_Comm comm)
+   : Vector()
+{
+   UseDevice(Device::IsAvailable());
+   x = MakeNVector(comm, UseDevice());
+}
 
-   SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, long glob_size)
-      : Vector(loc_size)
-   {
-      UseDevice(Device::IsAvailable());
-      x = MakeNVector(comm, UseDevice(), data, loc_size, glob_size);
-   }
+SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, long glob_size)
+   : Vector(loc_size)
+{
+   UseDevice(Device::IsAvailable());
+   x = MakeNVector(comm, UseDevice(), data, loc_size, glob_size);
+}
 #endif
 
 SundialsNVector::~SundialsNVector()
@@ -185,18 +222,43 @@ SundialsNVector::~SundialsNVector()
 
 void SundialsNVector::SetSize(int s, long glob_size)
 {
+   dbg("s:%d, glob:%ld",s,glob_size);
+   UseDevice(true);
    Vector::SetSize(s);
    _SetNvecDataAndSize_(glob_size);
 }
 
 void SundialsNVector::SetData(double *d)
 {
+   dbg("");
+   MFEM_VERIFY(!Vector::OwnsData(),"");
    Vector::SetData(d);
+   Vector::NewDataAndSize(d, Size());
    _SetNvecDataAndSize_();
+}
+void SundialsNVector::SetVector(Vector &u)
+{
+   dbg("");
+#if 1
+   MakeRef(u, 0, u.Size());
+   m_bkp = data;
+   //dbg("m_bkp flags:"); m_bkp.PrintFlags();
+#else
+   data.Delete();
+   data.ClearOwnerFlags();
+   MFEM_VERIFY(!Vector::OwnsData(),"");
+   Vector::NewDataAndSize(u.GetMemory(), Size());
+   dbg("\033[33mSYNC");
+   data.Sync(u.GetMemory());
+#endif
+   _SetNvecDataAndSize_();
+   HostReadWrite();
 }
 
 void SundialsNVector::SetDataAndSize(double *d, int s, long glob_size)
 {
+   dbg("");
+   MFEM_VERIFY(!Vector::OwnsData(),"");
    Vector::SetDataAndSize(d, s);
    _SetNvecDataAndSize_(glob_size);
 }
@@ -222,7 +284,8 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
    return x;
 }
 
-N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int s)
+N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data,
+                                      int s)
 {
    N_Vector x;
 #ifdef MFEM_USE_CUDA
@@ -275,7 +338,8 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
    return x;
 }
 
-N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<double> data,
+N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device,
+                                      Memory<double> data,
                                       int loc_size, long glob_size)
 {
    N_Vector x;
@@ -351,9 +415,29 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
+   dbg("mfem_y:");
    // At this point the up-to-date data for N_Vector y and ydot is on the device.
    const SundialsNVector mfem_y(y);
+   dbg("mfem_y: %p", (const double*)mfem_y);
+   const bool known_y = mm.IsKnown(mfem_y);
+   dbg("known_y: %s",known_y?"yes":"no");
+   if (known_y)
+   {
+      //dbg("\033[33mSYNC with u_bkp");
+      //const_cast<SundialsNVector*>(&mfem_y)->SyncMemory(u_bkp);
+      //*const_cast<Memory<double>*>(&mfem_y.GetMemory()) = u_mem_bkp;
+      mfem_y.HostRead();
+      //dbg("mfem_y flags:"); mfem_y.GetMemory().PrintFlags();
+   }
+
+   dbg("mfem_ydot:");
    SundialsNVector mfem_ydot(ydot);
+   /*const bool known_ydot = mm.IsKnown(mfem_ydot);
+   dbg("known_ydot: %s",known_ydot?"yes":"no");
+   if (known_ydot)
+   {
+      dbg("mfem_ydot: %p", (const double*)mfem_ydot);
+   }*/
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
 
@@ -361,6 +445,9 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    self->f->SetTime(t);
    self->f->Mult(mfem_y, mfem_ydot);
 
+   mfem_y.HostRead();
+   mfem_ydot.HostRead();
+   dbg("");
    // Return success
    return (0);
 }
@@ -369,6 +456,7 @@ int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
                              booleantype jok, booleantype *jcur, realtype gamma,
                              void*, N_Vector, N_Vector, N_Vector)
 {
+   dbg("");
    // Get data from N_Vectors
    const SundialsNVector mfem_y(y);
    const SundialsNVector mfem_fy(fy);
@@ -382,6 +470,7 @@ int CVODESolver::LinSysSetup(realtype t, N_Vector y, N_Vector fy, SUNMatrix A,
 int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
                              N_Vector b, realtype tol)
 {
+   dbg("");
    SundialsNVector mfem_x(x);
    const SundialsNVector mfem_b(b);
    CVODESolver *self = static_cast<CVODESolver*>(GET_CONTENT(LS));
@@ -392,6 +481,7 @@ int CVODESolver::LinSysSolve(SUNLinearSolver LS, SUNMatrix, N_Vector x,
 CVODESolver::CVODESolver(int lmm)
    : lmm_type(lmm), step_mode(CV_NORMAL)
 {
+   dbg("new Y");
    Y = new SundialsNVector();
 }
 
@@ -405,6 +495,7 @@ CVODESolver::CVODESolver(MPI_Comm comm, int lmm)
 
 void CVODESolver::Init(TimeDependentOperator &f_)
 {
+   dbg("");
    // Initialize the base class
    ODESolver::Init(f_);
 
@@ -446,6 +537,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       // Free existing solver memory and re-create with new vector size
       if (resize)
       {
+         dbg("CVodeFree");
          CVodeFree(&sundials_mem);
          sundials_mem = NULL;
       }
@@ -453,9 +545,15 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
    if (!sundials_mem)
    {
+      dbg("!sundials_mem");
       if (!Parallel())
       {
+         dbg("\033[32mY SetSize");
          Y->SetSize(local_size);
+         Y->HostReadWrite();
+         //dbg("Y flags:"); Y->GetMemory().PrintFlags();
+         //dbg("Y: %p", (const double*)Y->GetMemory());
+         //dbg("Y flags:"); Y->GetMemory().PrintFlags();
       }
 #ifdef MFEM_USE_MPI
       else
@@ -466,7 +564,9 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 #endif
 
       // Create CVODE
+      dbg("Create");
       sundials_mem = CVodeCreate(lmm_type);
+      dbg("sundials_mem: \033[31m%p", sundials_mem);
       MFEM_VERIFY(sundials_mem, "error in CVodeCreate()");
 
       // Initialize CVODE
@@ -489,23 +589,48 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    reinit = true;
 }
 
-void CVODESolver::Step(Vector &x, double &t, double &dt)
+void CVODESolver::Step(Vector &u, double &t, double &dt)
 {
-   Y->SetData(x.GetMemory());
+   u.HostRead();
+   Y->HostReadWrite();
+   //dbg("u: %p", (double*)u.GetMemory());
+   //dbg("u flags:"); u.GetMemory().PrintFlags();
+   //dbg("Y: %p", (double*)Y->GetMemory());
+   //dbg("Y flags:"); Y->GetMemory().PrintFlags();
 
-   MFEM_VERIFY(Y->Size() == x.Size(), "");
+   //Y->SetData(u.GetMemory());
+   Y->SetVector(u);
+   //Y->MakeRef(u, 0);
+   //dbg("Now Y(u)");
+   dbg("Y: %p", (double*)*Y);
+
+   //u_mem_bkp = Y->GetMemory();
+   //dbg("Y flags:"); Y->GetMemory().PrintFlags();
+
+   MFEM_VERIFY(Y->Size() == u.Size(), "");
 
    // Reinitialize CVODE memory if needed
    if (reinit)
    {
+      dbg("reinit");
+      Y->HostReadWrite();
       flag = CVodeReInit(sundials_mem, t, *Y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeReInit()");
       // reset flag
       reinit = false;
+      Y->GetMemory().Sync(u.GetMemory());
+      //dbg("Y: %p", (double*)Y->GetMemory());
+      //u_mem_bkp = Y->GetMemory();
+      //(Vector)(*Y) = 0.0;//Y->Read();
+      dbg("Y flags:"); Y->GetMemory().PrintFlags();
    }
 
    // Integrate the system
+   dbg("Integrate the system");
    double tout = t + dt;
+   Y->HostRead();
+   dbg("\033[31mY: %p", (const double*)Y->GetMemory());
+   //dbg("Y flags:"); Y->GetMemory().PrintFlags();
    flag = CVode(sundials_mem, tout, *Y, &t, step_mode);
    MFEM_VERIFY(flag >= 0, "error in CVode()");
 
@@ -516,6 +641,7 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
 
 void CVODESolver::UseMFEMLinearSolver()
 {
+   dbg("");
    // Free any existing matrix and linear solver
    if (A != NULL)   { SUNMatDestroy(A); A = NULL; }
    if (LSA != NULL) { SUNLinSolFree(LSA); LSA = NULL; }
@@ -547,6 +673,7 @@ void CVODESolver::UseMFEMLinearSolver()
 
 void CVODESolver::UseSundialsLinearSolver()
 {
+   dbg("");
    // Free any existing matrix and linear solver
    if (A != NULL)   { SUNMatDestroy(A); A = NULL; }
    if (LSA != NULL) { SUNLinSolFree(LSA); LSA = NULL; }
@@ -630,6 +757,7 @@ void CVODESolver::PrintInfo() const
 
 CVODESolver::~CVODESolver()
 {
+   dbg("");
    delete Y;
    SUNMatDestroy(A);
    SUNLinSolFree(LSA);
