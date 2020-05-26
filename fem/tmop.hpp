@@ -560,6 +560,8 @@ protected:
    ParFiniteElementSpace *pfes;
 #endif
 
+   int dim, ncomp;
+
 public:
    AdaptivityEvaluator() : mesh(NULL), fes(NULL)
    {
@@ -708,35 +710,87 @@ class DiscreteAdaptTC : public TargetConstructor
 protected:
    // Discrete target specification.
    // Data is owned, updated by UpdateTargetSpecification.
+   int ncomp, sizeidx, skewidx, aspectratioidx, orientationidx;
    Vector tspec;             //eta(x)
    Vector tspec_sav;
-   Vector tspec_perth;       //eta(x+h)
+   Vector tspec_pert1h;      //eta(x+h)
    Vector tspec_pert2h;      //eta(x+2*h)
    Vector tspec_pertmix;     //eta(x+h,y+h)
+   // The order inside these perturbation vectors (e.g. in 2D) is
+   // eta1(x+h,y), eta2(x+h,y) ... etan(x+h,y), eta1(x,y+h), eta2(x,y+h) ...
+   // same for tspec_pert2h and tspec_pertmix.
 
    // Note: do not use the Nodes of this space as they may not be on the
    // positions corresponding to the values of tspec.
    const FiniteElementSpace *tspec_fes;
+   const FiniteElementSpace *tspec_fesv;
+
+   // These flags can be used by outside functions to avoid recomputing
+   // the tspec and tspec_perth fields again on the same mesh.
+   bool good_tspec, good_tspec_grad, good_tspec_hess;
 
    // Evaluation of the discrete target specification on different meshes.
    // Owned.
    AdaptivityEvaluator *adapt_eval;
 
+   void SetDiscreteTargetBase(const GridFunction &tspec_);
+   void SetTspecAtIndex(int idx, const GridFunction &tspec_);
+   void FinalizeSerialDiscreteTargetSpec();
+#ifdef MFEM_USE_MPI
+   void SetTspecAtIndex(int idx, const ParGridFunction &tspec_);
+   void FinalizeParDiscreteTargetSpec(const ParGridFunction &tspec_);
+#endif
+
 public:
    DiscreteAdaptTC(TargetType ttype)
       : TargetConstructor(ttype),
-        tspec(), tspec_fes(NULL), adapt_eval(NULL) { }
+        ncomp(0),
+        sizeidx(-1), skewidx(-1), aspectratioidx(-1), orientationidx(-1),
+        tspec(), tspec_sav(), tspec_pert1h(), tspec_pert2h(), tspec_pertmix(),
+        tspec_fes(NULL), tspec_fesv(NULL),
+        good_tspec(false), good_tspec_grad(false), good_tspec_hess(false),
+        adapt_eval(NULL) { }
 
-   virtual ~DiscreteAdaptTC() { delete adapt_eval; }
+   virtual ~DiscreteAdaptTC()
+   {
+      delete adapt_eval;
+      delete tspec_fes;
+      delete tspec_fesv;
+   }
 
-   virtual void SetSerialDiscreteTargetSpec(GridFunction &tspec_);
+   /** @name Target specification methods.
+       The following methods are used to specify geometric parameters of the
+       targets when these parameters are given by discrete FE functions.
+       Note that every GridFunction given to the Set methods must use a
+       H1_FECollection of the same order. The number of components must
+       correspond to the type of geometric parameter and dimension.
+
+       @param[in] tspec_  Input values of a geometric parameter. Note that
+                          the methods in this class support only functions that
+                          use H1_FECollection collection of the same order. */
+   ///@{
+   virtual void SetSerialDiscreteTargetSpec(const GridFunction &tspec_);
+   virtual void SetSerialDiscreteTargetSize(const GridFunction &tspec_);
+   virtual void SetSerialDiscreteTargetSkew(const GridFunction &tspec_);
+   virtual void SetSerialDiscreteTargetAspectRatio(const GridFunction &tspec_);
+   virtual void SetSerialDiscreteTargetOrientation(const GridFunction &tspec_);
 #ifdef MFEM_USE_MPI
-   virtual void SetParDiscreteTargetSpec(ParGridFunction &tspec_);
+   virtual void SetParDiscreteTargetSpec(const ParGridFunction &tspec_);
+   virtual void SetParDiscreteTargetSize(const ParGridFunction &tspec_);
+   virtual void SetParDiscreteTargetSkew(const ParGridFunction &tspec_);
+   virtual void SetParDiscreteTargetAspectRatio(const ParGridFunction &tspec_);
+   virtual void SetParDiscreteTargetOrientation(const ParGridFunction &tspec_);
 #endif
+   ///@}
+
+   /// Used in combination with the Update methods to avoid extra computations.
+   void ResetUpdateFlags()
+   { good_tspec = good_tspec_grad = good_tspec_hess = false; }
 
    /** Used to update the target specification after the mesh has changed. The
-       new mesh positions are given by new_x. */
-   void UpdateTargetSpecification(const Vector &new_x);
+       new mesh positions are given by new_x. If @a use_flags is true, repeated
+       calls won't do anything until ResetUpdateFlags() is called. */
+   void UpdateTargetSpecification(const Vector &new_x, bool use_flag = false);
 
    void UpdateTargetSpecification(Vector &new_x, Vector &IntData);
 
@@ -744,15 +798,21 @@ public:
                                         ElementTransformation &T,
                                         int nodenum, int idir,
                                         const Vector &IntData);
+
    void RestoreTargetSpecificationAtNode(ElementTransformation &T, int nodenum);
 
    /** Used for finite-difference based computations. Computes the target
-       specifications after a mesh perturbation in x or y direction. */
-   void UpdateGradientTargetSpecification(const Vector &x, const double dx);
-
+       specifications after a mesh perturbation in x or y direction.
+       If @a use_flags is true, repeated calls won't do anything until
+       ResetUpdateFlags() is called. */
+   void UpdateGradientTargetSpecification(const Vector &x, double dx,
+                                          bool use_flag = false);
    /** Used for finite-difference based computations. Computes the target
-       specifications after two mesh perturbations in x and/or y direction. */
-   void UpdateHessianTargetSpecification(const Vector &x, const double dx);
+       specifications after two mesh perturbations in x and/or y direction.
+       If @a use_flags is true, repeated calls won't do anything until
+       ResetUpdateFlags() is called. */
+   void UpdateHessianTargetSpecification(const Vector &x, double dx,
+                                         bool use_flag = false);
 
    void SetAdaptivityEvaluator(AdaptivityEvaluator *ae)
    {
@@ -760,7 +820,7 @@ public:
       adapt_eval = ae;
    }
 
-   const Vector &GetTspecPert1H()   { return tspec_perth; }
+   const Vector &GetTspecPert1H()   { return tspec_pert1h; }
    const Vector &GetTspecPert2H()   { return tspec_pert2h; }
    const Vector &GetTspecPertMixH() { return tspec_pertmix; }
 
@@ -776,7 +836,6 @@ public:
 };
 
 class TMOPNewtonSolver;
-class TMOPDescentNewtonSolver;
 
 /** @brief A TMOP integrator class based on any given TMOP_QualityMetric and
     TargetConstructor.
@@ -789,7 +848,8 @@ class TMOP_Integrator : public NonlinearFormIntegrator
 {
 protected:
    friend class TMOPNewtonSolver;
-   friend class TMOPDescentNewtonSolver;
+   friend class TMOPComboIntegrator;
+
    TMOP_QualityMetric *metric;        // not owned
    const TargetConstructor *targetC;  // not owned
 
@@ -865,6 +925,11 @@ protected:
 #endif
    void ComputeMinJac(const Vector &x, const FiniteElementSpace &fes);
 
+   void DisableLimiting()
+   {
+      nodes0 = NULL; coeff0 = NULL; lim_dist = NULL; lim_func = NULL;
+   }
+
 public:
    /** @param[in] m  TMOP_QualityMetric that will be integrated (not owned).
        @param[in] tc Target-matrix construction algorithm to use (not owned). */
@@ -911,8 +976,8 @@ public:
 
    /** @brief Adds a limiting term to the integrator with limiting distance
        function (@a dist in the general version of the method) equal to 1. */
-   void EnableLimiting(const GridFunction &n0,
-                       Coefficient &w0, TMOP_LimiterFunction *lfunc = NULL);
+   void EnableLimiting(const GridFunction &n0, Coefficient &w0,
+                       TMOP_LimiterFunction *lfunc = NULL);
 
    /// Update the original/reference nodes used for limiting.
    void SetLimitingNodes(const GridFunction &n0) { nodes0 = &n0; }
@@ -933,7 +998,7 @@ public:
                                     ElementTransformation &T,
                                     const Vector &elfun, DenseMatrix &elmat);
 
-   DiscreteAdaptTC *GetDiscreteAdaptTC() { return discr_tc; }
+   DiscreteAdaptTC *GetDiscreteAdaptTC() const { return discr_tc; }
 
    /** @brief Computes the normalization factors of the metric and limiting
        integrals using the mesh position given by @a x. */
@@ -953,13 +1018,59 @@ public:
    double GetFDh()    const { return dx; }
 };
 
+class TMOPComboIntegrator : public NonlinearFormIntegrator
+{
+protected:
+   // Integrators in the combination. Owned.
+   Array<TMOP_Integrator *> tmopi;
+
+public:
+   TMOPComboIntegrator() : tmopi(0) { }
+
+   ~TMOPComboIntegrator()
+   {
+      for (int i = 0; i < tmopi.Size(); i++) { delete tmopi[i]; }
+   }
+
+   /// Adds a new TMOP_Integrator to the combination.
+   void AddTMOPIntegrator(TMOP_Integrator *ti) { tmopi.Append(ti); }
+
+   Array<TMOP_Integrator *> GetTMOPIntegrators() const { return tmopi; }
+
+   /// Adds the limiting term to the first integrator. Disables it for the rest.
+   void EnableLimiting(const GridFunction &n0, const GridFunction &dist,
+                       Coefficient &w0, TMOP_LimiterFunction *lfunc = NULL);
+
+   /** @brief Adds the limiting term to the first integrator. Disables it for
+       the rest (@a dist in the general version of the method) equal to 1. */
+   void EnableLimiting(const GridFunction &n0, Coefficient &w0,
+                       TMOP_LimiterFunction *lfunc = NULL);
+
+   /// Update the original/reference nodes used for limiting.
+   void SetLimitingNodes(const GridFunction &n0);
+
+   virtual double GetElementEnergy(const FiniteElement &el,
+                                   ElementTransformation &T,
+                                   const Vector &elfun);
+   virtual void AssembleElementVector(const FiniteElement &el,
+                                      ElementTransformation &T,
+                                      const Vector &elfun, Vector &elvect);
+   virtual void AssembleElementGrad(const FiniteElement &el,
+                                    ElementTransformation &T,
+                                    const Vector &elfun, DenseMatrix &elmat);
+
+   /// Normalization factor that considers all integrators in the combination.
+   void EnableNormalization(const GridFunction &x);
+#ifdef MFEM_USE_MPI
+   void ParEnableNormalization(const ParGridFunction &x);
+#endif
+};
 
 /// Interpolates the @a metric's values at the nodes of @a metric_gf.
 /** Assumes that @a metric_gf's FiniteElementSpace is initialized. */
 void InterpolateTMOP_QualityMetric(TMOP_QualityMetric &metric,
                                    const TargetConstructor &tc,
                                    const Mesh &mesh, GridFunction &metric_gf);
-
 }
 
 #endif
