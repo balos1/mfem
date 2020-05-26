@@ -207,7 +207,7 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 #ifdef MFEM_USE_CUDA
    if (use_device)
    {
-      x = N_VNewEmpty_Cuda();
+      x = N_VMake_Cuda(0, NULL, NULL);
    }
    else
    {
