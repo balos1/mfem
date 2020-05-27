@@ -54,7 +54,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
          NV_DATA_S(x) = HostReadWrite();
          if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
-         { ReadWrite(); }
+         { NV_DATA_S(x) = ReadWrite(); }
          NV_LENGTH_S(x) = size;
          break;
       }
@@ -500,7 +500,6 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    if (reinit)
    {
       dbg("Reinit integrator");
-      dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
       flag = CVodeReInit(sundials_mem, t, *Y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeReInit()");
       // reset flag
@@ -509,9 +508,9 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
 
    // Integrate the system
    dbg("Integrate the system");
-   dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
-   if (Y->GetMemory().GetMemoryType() >= mfem::MemoryType::MANAGED)
-   { MFEM_VERIFY(mm.IsKnown(Y->HostRead()), ""); }
+   // dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
+   // if (Y->GetMemory().GetMemoryType() >= mfem::MemoryType::MANAGED)
+   // { MFEM_VERIFY(mm.IsKnown(Y->HostRead()), ""); }
 
    double tout = t + dt;
    flag = CVode(sundials_mem, tout, *Y, &t, step_mode);
