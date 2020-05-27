@@ -53,6 +53,8 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
          dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
          NV_DATA_S(x) = HostReadWrite();
+         if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
+         { ReadWrite(); }
          NV_LENGTH_S(x) = size;
          break;
       }
