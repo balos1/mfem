@@ -205,7 +205,7 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 {
    N_Vector x;
 #ifdef MFEM_USE_CUDA
-   if (use_device)
+   if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
    {
       x = N_VMake_Cuda(0, NULL, NULL);
    }
@@ -226,7 +226,7 @@ N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int 
 {
    N_Vector x;
 #ifdef MFEM_USE_CUDA
-   if (use_device)
+   if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
    {
       x = N_VMake_Cuda(s, mfem::ReadWrite(data, s, false),
                        mfem::ReadWrite(data, s, true));
@@ -492,12 +492,13 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
    Y->SetData(x.GetMemory());
-
    MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize CVODE memory if needed
    if (reinit)
    {
+      dbg("Reinit integrator");
+      dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
       flag = CVodeReInit(sundials_mem, t, *Y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeReInit()");
       // reset flag
@@ -505,6 +506,11 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    }
 
    // Integrate the system
+   dbg("Integrate the system");
+   dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
+   if (Y->GetMemory().GetMemoryType() >= mfem::MemoryType::MANAGED)
+   { MFEM_VERIFY(mm.IsKnown(Y->HostRead()), ""); }
+
    double tout = t + dt;
    flag = CVode(sundials_mem, tout, *Y, &t, step_mode);
    MFEM_VERIFY(flag >= 0, "error in CVode()");
