@@ -51,10 +51,17 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_SERIAL:
       {
          MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p", HostRead());
-         NV_DATA_S(x) = HostReadWrite();
+         dbg("SUNDIALS_NVEC_SERIAL: h:%p d:%p", HostRead(), Read());
          if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
-         { NV_DATA_S(x) = ReadWrite(); }
+         {
+            auto content = static_cast<N_VectorContent_Serial>(GET_CONTENT(x));
+            content->ddata = HostReadWrite();
+            content->data = ReadWrite();
+         }
+         else
+         {
+            NV_DATA_S(x) = HostReadWrite();
+         }
          NV_LENGTH_S(x) = size;
          break;
       }
@@ -63,7 +70,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       {
          auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
          // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
-         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostReadWrite(), Read());
+         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostRead(), Read());
          content->host_data = HostReadWrite();
          content->device_data = ReadWrite();
          content->length = size;
@@ -100,20 +107,33 @@ void SundialsNVector::_SetDataAndSize_()
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         const bool known = mm.IsKnown(NV_DATA_S(x));
+         auto content = static_cast<N_VectorContent_Serial>(GET_CONTENT(x));
+         double *h_ptr = content->ddata;
+         double *d_ptr = content->data;
+         const bool known = mm.IsKnown(h_ptr);
+
          size = NV_LENGTH_S(x);
-         data.Wrap(NV_DATA_S(x), NV_LENGTH_S(x), false);
-         if (known) { data.ClearOwnerFlags(); }
+         if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
+         {
+            data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
+            if (known) { data.ClearOwnerFlags(); }
+            UseDevice(true);
+         }
+         else
+         {
+            data.Wrap(NV_DATA_S(x), size, false);
+            if (known) { data.ClearOwnerFlags(); }
+         }
          break;
       }
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         size = N_VGetLength_Cuda(x);
          double *h_ptr = N_VGetHostArrayPointer_Cuda(x);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(x);
          dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
          const bool known = mm.IsKnown(h_ptr);
+         size = N_VGetLength_Cuda(x);
          data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
          if (known) { data.ClearOwnerFlags(); }
          UseDevice(true);
@@ -353,9 +373,18 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
+   dbg("");
+
    // At this point the up-to-date data for N_Vector y and ydot is on the device.
    const SundialsNVector mfem_y(y);
    SundialsNVector mfem_ydot(ydot);
+
+   // mfem_y.GetMemory().PrintFlags();
+   // mfem_ydot.GetMemory().PrintFlags();
+
+   // // const double* d_ptr = mfem_ydot.Read();
+   // // const double* h_ptr = mfem_ydot.HostRead();
+   // // dbg("mfem_ydot: h:%p d:%p", h_ptr, d_ptr);
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
 
@@ -364,6 +393,7 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    self->f->Mult(mfem_y, mfem_ydot);
 
    // Return success
+   dbg("RHS complete");
    return (0);
 }
 
@@ -493,13 +523,19 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   Y->SetData(x.GetMemory());
+   // dbg("x: h:%p, d:%p", x.HostRead(), x.Read());
+   // x.GetMemory().PrintFlags();
+
+   dbg("x: h-known:%d, d-known:%d", mm.IsKnown(x.HostRead()), mm.IsKnown(x.Read()));
+
+   Y->SetData(x.GetData());
    MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize CVODE memory if needed
    if (reinit)
    {
       dbg("Reinit integrator");
+
       flag = CVodeReInit(sundials_mem, t, *Y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeReInit()");
       // reset flag
@@ -508,9 +544,6 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
 
    // Integrate the system
    dbg("Integrate the system");
-   // dbg("Y:  h_ptr=%p, d_ptr=%p", Y->HostRead(), Y->Read());
-   // if (Y->GetMemory().GetMemoryType() >= mfem::MemoryType::MANAGED)
-   // { MFEM_VERIFY(mm.IsKnown(Y->HostRead()), ""); }
 
    double tout = t + dt;
    flag = CVode(sundials_mem, tout, *Y, &t, step_mode);
