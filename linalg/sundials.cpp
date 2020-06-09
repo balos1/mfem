@@ -39,6 +39,19 @@ using namespace std;
 namespace mfem
 {
 
+static void* allocfn(size_t mem_size)
+{
+   Memory<double> *mem = new Memory<double>(mem_size/sizeof(double), Device::GetHostMemoryType());
+   return *mem;
+}
+
+static void freefn(void* ptr)
+{
+   Memory<double> *mem =
+      new Memory<double>((double*) ptr, 1, Device::GetHostMemoryType(), true);
+   delete mem;
+}
+
 // ---------------------------------------------------------------------------
 // SUNDIALS N_Vector interface functions
 // ---------------------------------------------------------------------------
@@ -107,9 +120,10 @@ void SundialsNVector::_SetDataAndSize_()
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         auto content = static_cast<N_VectorContent_Serial>(GET_CONTENT(x));
-         double *h_ptr = content->ddata;
-         double *d_ptr = content->data;
+         double *h_ptr = NV_DDATA_S(x);
+         double *d_ptr = NV_DATA_S(x);
+         dbg("SUNDIALS_NVEC_SERIAL: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
+
          const bool known = mm.IsKnown(h_ptr);
 
          size = NV_LENGTH_S(x);
@@ -131,8 +145,10 @@ void SundialsNVector::_SetDataAndSize_()
       {
          double *h_ptr = N_VGetHostArrayPointer_Cuda(x);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(x);
-         dbg("h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
+         dbg("SUNDIALS_NVEC_CUDA: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
+
          const bool known = mm.IsKnown(h_ptr);
+
          size = N_VGetLength_Cuda(x);
          data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
          if (known) { data.ClearOwnerFlags(); }
@@ -233,32 +249,11 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
    }
    else
    {
-      x = N_VNewEmpty_Serial(0);
+      // x = N_VNewEmpty_Serial(0);
+      x = N_VMakeWithAllocator_Serial(0, NULL, allocfn, freefn);
    }
 #else
    x = N_VNewEmpty_Serial(0);
-#endif
-
-   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
-
-   return x;
-}
-
-N_Vector SundialsNVector::MakeNVector(bool use_device, Memory<double> data, int s)
-{
-   N_Vector x;
-#ifdef MFEM_USE_CUDA
-   if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
-   {
-      x = N_VMake_Cuda(s, mfem::ReadWrite(data, s, false),
-                       mfem::ReadWrite(data, s, true));
-   }
-   else
-   {
-      x = N_VMake_Serial(s, mfem::ReadWrite(data, s, false));
-   }
-#else
-   x = N_VMake_Serial(s, mfem::ReadWrite(data, s, false));
 #endif
 
    MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
@@ -373,18 +368,9 @@ static int LSFree(SUNLinearSolver LS)
 int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
                      void *user_data)
 {
-   dbg("");
-
    // At this point the up-to-date data for N_Vector y and ydot is on the device.
    const SundialsNVector mfem_y(y);
    SundialsNVector mfem_ydot(ydot);
-
-   // mfem_y.GetMemory().PrintFlags();
-   // mfem_ydot.GetMemory().PrintFlags();
-
-   // // const double* d_ptr = mfem_ydot.Read();
-   // // const double* h_ptr = mfem_ydot.HostRead();
-   // // dbg("mfem_ydot: h:%p d:%p", h_ptr, d_ptr);
 
    CVODESolver *self = static_cast<CVODESolver*>(user_data);
 
@@ -393,7 +379,6 @@ int CVODESolver::RHS(realtype t, const N_Vector y, N_Vector ydot,
    self->f->Mult(mfem_y, mfem_ydot);
 
    // Return success
-   dbg("RHS complete");
    return (0);
 }
 
@@ -523,12 +508,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
-   // dbg("x: h:%p, d:%p", x.HostRead(), x.Read());
-   // x.GetMemory().PrintFlags();
-
-   dbg("x: h-known:%d, d-known:%d", mm.IsKnown(x.HostRead()), mm.IsKnown(x.Read()));
-
-   Y->SetData(x.GetData());
+   Y->MakeRef(x, 0, x.Size());
    MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize CVODE memory if needed

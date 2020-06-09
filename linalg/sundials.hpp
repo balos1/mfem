@@ -97,10 +97,23 @@ public:
    void SetSize(int s, long glob_size = 0);
 
    /// Set the vector data.
+   /// @warning This method should be called only when OwnsData() is false.
    void SetData(double *d);
 
    /// Set the vector data and size.
+   /** The Vector does not assume ownership of the new data. The new size is
+       also used as the new Capacity().
+       @warning This method should be called only when OwnsData() is false. */
    void SetDataAndSize(double *d, int s, long glob_size = 0);
+
+   /// Reset the Vector to be a reference to a sub-vector of @a base.
+   inline void MakeRef(Vector &base, int offset, int s)
+   {
+      data.Delete();
+      size = s;
+      data.MakeAlias(base.GetMemory(), offset, s);
+      _SetNvecDataAndSize_();
+   }
 
    /// Typecasting to SUNDIALS' N_Vector type
    operator N_Vector() const { return x; }
@@ -113,23 +126,17 @@ public:
 
    /// Gets ownership of the internal N_Vector
    int GetOwnership() const { return own_NVector; }
-   
+
    /// Create a N_Vector.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(bool use_device);
-   
-   /// Create a N_Vector using @wrap for the data and @s for the size.
-   /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
-       @param[in] wrap  The data attached to the SUNDIALS N_Vector.
-       @param[in] s  The size of the vector. */
-   static N_Vector MakeNVector(bool use_device, Memory<double> wrap, int s);
 
 #ifdef MFEM_USE_MPI
    /// Create a parallel N_Vector.
    /** @param[in] comm  The MPI communicator to use.
        @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(MPI_Comm comm, bool use_device);
-   
+
    /// Create a N_Vector using @wrap for the data and @s for the size.
    /** @param[in] comm  The MPI communicator to use.
        @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
