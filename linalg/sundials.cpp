@@ -52,6 +52,27 @@ static void freefn(void* ptr)
    delete mem;
 }
 
+static void default_allocfn(sunindextype length, size_t size, void** h_ptr, void** d_ptr)
+{
+   Memory<double> *mem = new Memory<double>(length, Device::GetHostMemoryType());
+   *h_ptr = mfem::HostReadWrite(*mem, length);
+   *d_ptr = mfem::ReadWrite(*mem, length);
+}
+
+static void default_freefn(sunindextype length, void* h_ptr, void* d_ptr)
+{
+   const bool known = mm.IsKnown(h_ptr);
+   if (known)
+   {
+   }
+   else
+   {
+      Memory<double> *mem = new Memory<double>();
+      mem->Wrap((double*) h_ptr, (double*) d_ptr, length, Device::GetHostMemoryType(), true);
+      delete mem;
+   }
+}
+
 // ---------------------------------------------------------------------------
 // SUNDIALS N_Vector interface functions
 // ---------------------------------------------------------------------------
@@ -82,7 +103,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_CUDA:
       {
          auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
-         // MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
+         MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostRead(), Read());
          content->host_data = HostReadWrite();
          content->device_data = ReadWrite();
@@ -245,7 +266,8 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 #ifdef MFEM_USE_CUDA
    if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
    {
-      x = N_VMake_Cuda(0, NULL, NULL);
+      // x = N_VMake_Cuda(0, NULL, NULL);
+      x = N_VMakeWithAllocator_Cuda(0, NULL, NULL, default_allocfn, default_freefn);
    }
    else
    {
