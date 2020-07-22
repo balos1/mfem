@@ -31,6 +31,10 @@
 // SUNDIALS linear solvers
 #include <sunlinsol/sunlinsol_spgmr.h>
 
+// SUNDIALS memory interface
+#include <sundials/sundials_memory.h>
+#include <sunmemory/sunmemory_cuda.h>
+
 // Access SUNDIALS object's content pointer
 #define GET_CONTENT(X) ( X->content )
 
@@ -39,39 +43,148 @@ using namespace std;
 namespace mfem
 {
 
-static void* allocfn(size_t mem_size)
-{
-   Memory<double> *mem = new Memory<double>(mem_size/sizeof(double), Device::GetHostMemoryType());
-   return *mem;
-}
+//
+// TODO: need to handle MFEM UVM
+//
 
-static void freefn(void* ptr)
+SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
+                                  size_t memsize,
+                                  SUNMemoryType mem_type)
 {
-   Memory<double> *mem =
-      new Memory<double>((double*) ptr, 1, Device::GetHostMemoryType(), true);
-   delete mem;
-}
+   dbg("");
 
-static void default_allocfn(sunindextype length, size_t size, void** h_ptr, void** d_ptr)
-{
+   int length = memsize/sizeof(double);
+   SUNMemory sunmem = SUNMemoryNewEmpty();
    Memory<double> *mem = new Memory<double>(length, Device::GetHostMemoryType());
-   *h_ptr = mfem::HostReadWrite(*mem, length);
-   *d_ptr = mfem::ReadWrite(*mem, length);
-}
 
-static void default_freefn(sunindextype length, void* h_ptr, void* d_ptr)
-{
-   const bool known = mm.IsKnown(h_ptr);
-   if (known)
+   sunmem->ptr = NULL;
+   sunmem->own = SUNTRUE;
+
+   if (mem_type == SUNMEMTYPE_HOST || mem_type == SUNMEMTYPE_PINNED)
    {
+      sunmem->ptr  = mfem::HostReadWrite(*mem, length);
+      sunmem->type = SUNMEMTYPE_HOST;
+   }
+   else if (mem_type == SUNMEMTYPE_DEVICE)
+   {
+      sunmem->ptr  = mfem::ReadWrite(*mem, length);
+      sunmem->type = SUNMEMTYPE_DEVICE;
    }
    else
    {
-      Memory<double> *mem = new Memory<double>();
-      mem->Wrap((double*) h_ptr, (double*) d_ptr, length, Device::GetHostMemoryType(), true);
       delete mem;
+      free(sunmem);
+      return(NULL);
+   }
+
+   return(sunmem);
+}
+
+void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
+{
+   dbg("");
+
+   const bool known = mm.IsKnown(sunmem->ptr);
+   if (known)
+   {
+      // TODO: implement
+      dbg("known %p", sunmem->ptr);
+   }
+   else
+   {
+      if (sunmem->type == SUNMEMTYPE_HOST)
+      {
+         Memory<double> *mem = new Memory<double>();
+         mem->Wrap(static_cast<double*>(sunmem->ptr), 1, Device::GetHostMemoryType(), true);
+         delete mem;
+      }
+      else if (sunmem->type == SUNMEMTYPE_DEVICE)
+      {
+         Memory<double> *mem = new Memory<double>();
+         mem->Wrap(static_cast<double*>(sunmem->ptr), 1, Device::GetDeviceMemoryType(), true);
+         delete mem;
+      }
+      else
+      {
+         MFEM_ABORT("Invalid SUNMEMTYPE");
+      }
    }
 }
+
+int SundialsMemHelper_Copy(SUNMemoryHelper helper, SUNMemory dstSunmem,
+                           SUNMemory srcSunmem, size_t memsize)
+{
+   dbg("");
+
+   int length = memsize/sizeof(double);
+   Memory<double> *srcmem = new Memory<double>();
+   Memory<double> *dstmem = new Memory<double>();
+
+   if (srcSunmem->type == SUNMEMTYPE_HOST)
+   {
+      srcmem->Wrap(static_cast<double*>(srcSunmem->ptr), length, Device::GetHostMemoryType(), false);
+   }
+   else if (srcSunmem->type == SUNMEMTYPE_DEVICE)
+   {
+      srcmem->Wrap(static_cast<double*>(srcSunmem->ptr), length, Device::GetDeviceMemoryType(), false);
+   }
+   else
+   {
+      delete srcmem;
+      delete dstmem;
+      MFEM_ABORT("Invalid SUNMEMTYPE");
+   }
+
+   if (dstSunmem->type == SUNMEMTYPE_HOST)
+   {
+      dstmem->Wrap(static_cast<double*>(dstSunmem->ptr), length, Device::GetHostMemoryType(), false);
+   }
+   else if (dstSunmem->type == SUNMEMTYPE_DEVICE)
+   {
+      dstmem->Wrap(static_cast<double*>(dstSunmem->ptr), length, Device::GetDeviceMemoryType(), false);
+   }
+   else
+   {
+      delete srcmem;
+      delete dstmem;
+      MFEM_ABORT("Invalid SUNMEMTYPE");
+   }
+
+   srcmem->CopyTo(*dstmem, length);
+
+   delete srcmem;
+   delete dstmem;
+
+   return 0;
+}
+
+
+SUNMemoryHelper SundialsMemHelper()
+{
+  SUNMemoryHelper helper;
+  SUNMemoryHelper_Ops ops;
+
+  /* Create the ops */
+  ops = (SUNMemoryHelper_Ops) malloc(sizeof(struct _SUNMemoryHelper_Ops));
+  memset(ops, 0, sizeof(struct _SUNMemoryHelper_Ops));
+
+  /* Set the ops */
+  ops->alloc     = SundialsMemHelper_Alloc;
+  ops->dealloc   = SundialsMemHelper_Dealloc;
+  ops->copy      = SUNMemoryHelper_Copy_Cuda;
+  ops->copyasync = SUNMemoryHelper_CopyAsync_Cuda;
+
+  /* Allocate helper */
+  helper = (SUNMemoryHelper) malloc(sizeof(struct _SUNMemoryHelper));
+  memset(helper, 0, sizeof(struct _SUNMemoryHelper));
+
+  /* Attach user data and ops */
+  helper->content = NULL;
+  helper->ops     = ops;
+
+  return helper;
+}
+
 
 // ---------------------------------------------------------------------------
 // SUNDIALS N_Vector interface functions
@@ -89,7 +202,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
          {
             auto content = static_cast<N_VectorContent_Serial>(GET_CONTENT(x));
-            content->ddata = HostReadWrite();
+            HostReadWrite();
             content->data = ReadWrite();
          }
          else
@@ -103,10 +216,9 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_CUDA:
       {
          auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
-         MFEM_ASSERT(content->own_data == SUNFALSE, "invalid cuda N_Vector");
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostRead(), Read());
-         content->host_data = HostReadWrite();
-         content->device_data = ReadWrite();
+         content->host_data = SUNMemoryHelper_Wrap(HostReadWrite(), SUNMEMTYPE_HOST);
+         content->device_data = SUNMemoryHelper_Wrap(ReadWrite(), SUNMEMTYPE_DEVICE);
          content->length = size;
          break;
       }
@@ -141,7 +253,7 @@ void SundialsNVector::_SetDataAndSize_()
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         double *h_ptr = NV_DDATA_S(x);
+         double *h_ptr = NV_DATA_S(x);
          double *d_ptr = NV_DATA_S(x);
          dbg("SUNDIALS_NVEC_SERIAL: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
 
@@ -266,13 +378,13 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 #ifdef MFEM_USE_CUDA
    if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
    {
-      // x = N_VMake_Cuda(0, NULL, NULL);
-      x = N_VMakeWithAllocator_Cuda(0, NULL, NULL, default_allocfn, default_freefn);
+      x = N_VNewCustom_Cuda(0, SundialsMemHelper());
+      // x = N_VMakeWithAllocator_Cuda(0, NULL, NULL, default_allocfn, default_freefn);
    }
    else
    {
-      // x = N_VNewEmpty_Serial(0);
-      x = N_VMakeWithAllocator_Serial(0, NULL, allocfn, freefn);
+      x = N_VNewEmpty_Serial(0);
+      // x = N_VMakeWithAllocator_Serial(0, NULL, allocfn, freefn);
    }
 #else
    x = N_VNewEmpty_Serial(0);
