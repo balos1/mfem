@@ -43,6 +43,10 @@ using namespace std;
 namespace mfem
 {
 
+// ---------------------------------------------------------------------------
+// SUNMemory interface functions
+// ---------------------------------------------------------------------------
+
 //
 // TODO: need to handle MFEM UVM
 //
@@ -84,13 +88,7 @@ void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
 {
    dbg("");
 
-   const bool known = mm.IsKnown(sunmem->ptr);
-   if (known)
-   {
-      // TODO: implement
-      dbg("known %p", sunmem->ptr);
-   }
-   else
+   if (!mm.IsKnown(sunmem->ptr))
    {
       if (sunmem->type == SUNMEMTYPE_HOST)
       {
@@ -110,54 +108,6 @@ void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
       }
    }
 }
-
-int SundialsMemHelper_Copy(SUNMemoryHelper helper, SUNMemory dstSunmem,
-                           SUNMemory srcSunmem, size_t memsize)
-{
-   dbg("");
-
-   int length = memsize/sizeof(double);
-   Memory<double> *srcmem = new Memory<double>();
-   Memory<double> *dstmem = new Memory<double>();
-
-   if (srcSunmem->type == SUNMEMTYPE_HOST)
-   {
-      srcmem->Wrap(static_cast<double*>(srcSunmem->ptr), length, Device::GetHostMemoryType(), false);
-   }
-   else if (srcSunmem->type == SUNMEMTYPE_DEVICE)
-   {
-      srcmem->Wrap(static_cast<double*>(srcSunmem->ptr), length, Device::GetDeviceMemoryType(), false);
-   }
-   else
-   {
-      delete srcmem;
-      delete dstmem;
-      MFEM_ABORT("Invalid SUNMEMTYPE");
-   }
-
-   if (dstSunmem->type == SUNMEMTYPE_HOST)
-   {
-      dstmem->Wrap(static_cast<double*>(dstSunmem->ptr), length, Device::GetHostMemoryType(), false);
-   }
-   else if (dstSunmem->type == SUNMEMTYPE_DEVICE)
-   {
-      dstmem->Wrap(static_cast<double*>(dstSunmem->ptr), length, Device::GetDeviceMemoryType(), false);
-   }
-   else
-   {
-      delete srcmem;
-      delete dstmem;
-      MFEM_ABORT("Invalid SUNMEMTYPE");
-   }
-
-   srcmem->CopyTo(*dstmem, length);
-
-   delete srcmem;
-   delete dstmem;
-
-   return 0;
-}
-
 
 SUNMemoryHelper SundialsMemHelper()
 {
@@ -198,17 +148,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       case SUNDIALS_NVEC_SERIAL:
       {
          MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p d:%p", HostRead(), Read());
-         if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
-         {
-            auto content = static_cast<N_VectorContent_Serial>(GET_CONTENT(x));
-            HostReadWrite();
-            content->data = ReadWrite();
-         }
-         else
-         {
-            NV_DATA_S(x) = HostReadWrite();
-         }
+         NV_DATA_S(x) = HostReadWrite();
          NV_LENGTH_S(x) = size;
          break;
       }
@@ -253,24 +193,10 @@ void SundialsNVector::_SetDataAndSize_()
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         double *h_ptr = NV_DATA_S(x);
-         double *d_ptr = NV_DATA_S(x);
-         dbg("SUNDIALS_NVEC_SERIAL: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-
-         const bool known = mm.IsKnown(h_ptr);
-
+         const bool known = mm.IsKnown(NV_DATA_S(x));
          size = NV_LENGTH_S(x);
-         if (Device::GetDeviceMemoryType() == mfem::MemoryType::DEVICE_DEBUG)
-         {
-            data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
-            if (known) { data.ClearOwnerFlags(); }
-            UseDevice(true);
-         }
-         else
-         {
-            data.Wrap(NV_DATA_S(x), size, false);
-            if (known) { data.ClearOwnerFlags(); }
-         }
+         data.Wrap(NV_DATA_S(x), size, false);
+         if (known) { data.ClearOwnerFlags(); }
          break;
       }
 #ifdef MFEM_USE_CUDA
@@ -376,15 +302,13 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 {
    N_Vector x;
 #ifdef MFEM_USE_CUDA
-   if (use_device && Device::GetDeviceMemoryType() != mfem::MemoryType::DEVICE_DEBUG)
+   if (use_device)
    {
       x = N_VNewCustom_Cuda(0, SundialsMemHelper());
-      // x = N_VMakeWithAllocator_Cuda(0, NULL, NULL, default_allocfn, default_freefn);
    }
    else
    {
       x = N_VNewEmpty_Serial(0);
-      // x = N_VMakeWithAllocator_Serial(0, NULL, allocfn, freefn);
    }
 #else
    x = N_VNewEmpty_Serial(0);
