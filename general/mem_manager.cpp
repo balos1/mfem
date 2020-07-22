@@ -9,6 +9,7 @@
 // terms of the BSD-3 license. We welcome feedback and contributions, see file
 // CONTRIBUTING.md for details.
 
+#include "dbg.hpp"
 #include "forall.hpp"
 #include "mem_manager.hpp"
 

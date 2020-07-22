@@ -12,12 +12,17 @@
 #ifndef MFEM_SUNDIALS
 #define MFEM_SUNDIALS
 
+#include "../general/dbg.hpp"
 #include "../config/config.hpp"
 
 #ifdef MFEM_USE_SUNDIALS
 
 #ifdef MFEM_USE_MPI
 #include <mpi.h>
+#endif
+
+#ifdef MFEM_USE_CUDA
+#include <nvector/nvector_cuda.h>
 #endif
 
 #include "ode.hpp"
@@ -43,25 +48,128 @@ namespace mfem
 // Base class for interfacing with SUNDIALS packages
 // ---------------------------------------------------------------------------
 
+/// Vector interface for SUNDIALS N_Vectors.
+class SundialsNVector : public Vector
+{
+protected:
+   int own_NVector;
+
+   /// The actual SUNDIALS object
+   N_Vector x;
+
+   friend class SundialsSolver;
+
+   /// Set data and length of internal N_Vector x from 'this'.
+   void _SetNvecDataAndSize_(long glob_size = 0);
+
+   /// Set data and length from the internal N_Vector x.
+   void _SetDataAndSize_();
+
+public:
+   /// Creates an empty SundialsNVector.
+   SundialsNVector();
+
+   /// Creates a SundialsNVector out of a SUNDIALS N_Vector object.
+   /** The N_Vector @nv must be destroyed outside. */
+   SundialsNVector(N_Vector nv);
+
+#ifdef MFEM_USE_MPI
+   /// Creates an empty SundialsNVector.
+   SundialsNVector(MPI_Comm comm);
+
+   /// Creates a SundialsNVector with the given local and global sizes.
+   SundialsNVector(MPI_Comm comm, int loc_size, long glob_size);
+#endif
+
+   /// Calls SUNDIALS N_VDestroy function if the N_Vector is owned by 'this'.
+   ~SundialsNVector();
+
+   /// Returns the N_Vector_ID for the internal N_Vector.
+   inline N_Vector_ID GetNVectorID() const { return N_VGetVectorID(x); }
+
+#ifdef MFEM_USE_MPI
+   /// Returns the MPI commmunicator for the internal N_Vector x.
+   inline MPI_Comm Communicator() const { return *static_cast<MPI_Comm*>(N_VGetCommunicator(x)); }
+
+   /// Returns the MPI global length for the internal N_Vector x.
+   inline int GlobalSize() const { return N_VGetLength(x); }
+#endif
+
+   /// Resize the vector to size @a s.
+   void SetSize(int s, long glob_size = 0);
+
+   /// Set the vector data.
+   /// @warning This method should be called only when OwnsData() is false.
+   void SetData(double *d);
+
+   /// Set the vector data and size.
+   /** The Vector does not assume ownership of the new data. The new size is
+       also used as the new Capacity().
+       @warning This method should be called only when OwnsData() is false. */
+   void SetDataAndSize(double *d, int s, long glob_size = 0);
+
+   /// Reset the Vector to be a reference to a sub-vector of @a base.
+   inline void MakeRef(Vector &base, int offset, int s)
+   {
+      data.Delete();
+      size = s;
+      data.MakeAlias(base.GetMemory(), offset, s);
+      _SetNvecDataAndSize_();
+   }
+
+   /// Typecasting to SUNDIALS' N_Vector type
+   operator N_Vector() const { return x; }
+
+   /// Changes the ownership of the the vector
+   N_Vector StealNVector() { own_NVector = 0; return x; }
+
+   /// Sets ownership of the internal N_Vector
+   void SetOwnership(int own) { own_NVector = own; }
+
+   /// Gets ownership of the internal N_Vector
+   int GetOwnership() const { return own_NVector; }
+
+   /// Create a N_Vector.
+   /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
+   static N_Vector MakeNVector(bool use_device);
+
+#ifdef MFEM_USE_MPI
+   /// Create a parallel N_Vector.
+   /** @param[in] comm  The MPI communicator to use.
+       @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
+   static N_Vector MakeNVector(MPI_Comm comm, bool use_device);
+
+   /// Create a N_Vector using @wrap for the data and @s for the size.
+   /** @param[in] comm  The MPI communicator to use.
+       @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
+       @param[in] wrap  The data attached to the SUNDIALS N_Vector.
+       @param[in] loc_size  The size of the vector.
+       @param[in] glob_size  The global size of the vector. */
+   static N_Vector MakeNVector(MPI_Comm comm, bool use_device, Memory<double> wrap,
+                               int loc_size, long glob_size);
+#endif
+
+};
+
 /// Base class for interfacing with SUNDIALS packages.
 class SundialsSolver
 {
 protected:
-   void *sundials_mem;     ///< SUNDIALS mem structure.
-   mutable int flag;       ///< Last flag returned from a call to SUNDIALS.
-   bool reinit;            ///< Flag to signal memory reinitialization is need.
-   long saved_global_size; ///< Global vector length on last initialization.
+   void *sundials_mem;        ///< SUNDIALS mem structure.
+   mutable int flag;          ///< Last flag returned from a call to SUNDIALS.
+   bool reinit;               ///< Flag to signal memory reinitialization is need.
+   long saved_global_size;    ///< Global vector length on last initialization.
 
-   N_Vector           y;   ///< State vector.
-   SUNMatrix          A;   ///< Linear system A = I - gamma J, M - gamma J, or J.
-   SUNMatrix          M;   ///< Mass matrix M.
-   SUNLinearSolver    LSA; ///< Linear solver for A.
-   SUNLinearSolver    LSM; ///< Linear solver for M.
-   SUNNonlinearSolver NLS; ///< Nonlinear solver.
+   SundialsNVector*   Y;      ///< State vector.
+   SUNMatrix          A;      ///< Linear system A = I - gamma J, M - gamma J, or J.
+   SUNMatrix          M;      ///< Mass matrix M.
+   SUNLinearSolver    LSA;    ///< Linear solver for A.
+   SUNLinearSolver    LSM;    ///< Linear solver for M.
+   SUNNonlinearSolver NLS;    ///< Nonlinear solver.
 
 #ifdef MFEM_USE_MPI
    bool Parallel() const
-   { return (N_VGetVectorID(y) != SUNDIALS_NVEC_SERIAL); }
+   { return (Y->GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (Y->GetNVectorID() != SUNDIALS_NVEC_CUDA); }
 #else
    bool Parallel() const { return false; }
 #endif
@@ -74,7 +182,7 @@ protected:
    /** @brief Protected constructor: objects of this type should be constructed
        only as part of a derived class. */
    SundialsSolver() : sundials_mem(NULL), flag(0), reinit(false),
-      saved_global_size(0), y(NULL), A(NULL), M(NULL),
+      saved_global_size(0), Y(NULL), A(NULL), M(NULL),
       LSA(NULL), LSM(NULL), NLS(NULL) { }
 
    // Helper functions
@@ -225,6 +333,7 @@ public:
 
    /// Destroy the associated CVODE memory and SUNDIALS objects.
    virtual ~CVODESolver();
+
 };
 
 // ---------------------------------------------------------------------------
@@ -547,6 +656,10 @@ public:
 
    /// Destroy the associated ARKode memory and SUNDIALS objects.
    virtual ~ARKStepSolver();
+
+   virtual MemoryClass GetMemoryClass() const
+   { return Device::GetMemoryClass(); }
+
 };
 
 
@@ -560,7 +673,7 @@ class KINSolver : public NewtonSolver, public SundialsSolver
 protected:
    int global_strategy;               ///< KINSOL solution strategy
    bool use_oper_grad;                ///< use the Jv prod function
-   mutable N_Vector y_scale, f_scale; ///< scaling vectors
+   mutable SundialsNVector *y_scale, *f_scale; ///< scaling vectors
    const Operator *jacobian;          ///< stores oper->GetGradient()
    int maa;                           ///< number of acceleration vectors
 
