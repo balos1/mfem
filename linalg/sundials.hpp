@@ -69,6 +69,11 @@ public:
    /// Creates an empty SundialsNVector.
    SundialsNVector();
 
+   /// Creates a SundialsNVector referencing an array of doubles, owned by someone else.
+   /** The pointer @a _data can be NULL. The data array can be replaced later
+       with SetData(). */
+   SundialsNVector(double *_data, int _size);
+
    /// Creates a SundialsNVector out of a SUNDIALS N_Vector object.
    /** The N_Vector @nv must be destroyed outside. */
    SundialsNVector(N_Vector nv);
@@ -132,6 +137,11 @@ public:
    /// Create a N_Vector.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(bool use_device);
+
+   /// Copy assignment.
+   /** @note Defining this method overwrites the implicitly defined copy
+       assignment operator. */
+   using Vector::operator=;
 
 #ifdef MFEM_USE_MPI
    /// Create a parallel N_Vector.
@@ -365,10 +375,10 @@ protected:
 
    SUNMatrix          AB;   ///< Linear system A = I - gamma J, M - gamma J, or J.
    SUNLinearSolver    LSB;  ///< Linear solver for A.
-   N_Vector           q;    ///< Quadrature vector.
-   N_Vector           yB;   ///< State vector.
-   N_Vector           yy;   ///< State vector.
-   N_Vector           qB;   ///< State vector.
+   SundialsNVector*   q;    ///< Quadrature vector.
+   SundialsNVector*   yB;   ///< State vector.
+   SundialsNVector*   yy;   ///< State vector.
+   SundialsNVector*   qB;   ///< State vector.
 
    /// Default scalar backward relative tolerance
    static constexpr double default_rel_tolB = 1e-4;
