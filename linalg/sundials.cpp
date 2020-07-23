@@ -170,7 +170,19 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          MFEM_ASSERT(NV_OWN_DATA_P(x) == SUNFALSE, "invalid parallel N_Vector");
          NV_DATA_P(x) = HostReadWrite();
          NV_LOCLENGTH_P(x) = size;
-         NV_GLOBLENGTH_P(x) = (glob_size == 0) ? size : glob_size;
+         if (glob_size == 0)
+         {
+            glob_size = NV_GLOBLENGTH_P(nv);
+
+            if (glob_size == 0 && glob_size != size)
+            {
+               MPI_Comm sundials_comm = NV_COMM_P(nv);
+               long local_size = size;
+               MPI_Allreduce(&local_size, &glob_size, 1, MPI_LONG,
+                             MPI_SUM,sundials_comm);
+            }
+         }
+         NV_GLOBLENGTH_P(nv) = glob_size;
          break;
       }
       case SUNDIALS_NVEC_PARHYP:
@@ -430,33 +442,6 @@ static int LSFree(SUNLinearSolver LS)
    free(LS); LS = NULL;
    return (0);
 }
-
-// ---------------------------------------------------------------------------
-// SundialsSolver Helper functions
-// ---------------------------------------------------------------------------
-
-void SundialsSolver::AllocateEmptyNVector(N_Vector &y)
-{
-   // Allocate an empty serial N_Vector
-   y = N_VNewEmpty_Serial(0);
-   MFEM_VERIFY(y, "error in N_VNewEmpty_Serial()");
-}
-
-#ifdef MFEM_USE_MPI
-void SundialsSolver::AllocateEmptyNVector(N_Vector &y, MPI_Comm comm)
-{
-   if (comm == MPI_COMM_NULL)
-   {
-      AllocateEmptyNVector(y);
-   }
-   else
-   {
-      // Allocate an empty parallel N_Vector
-      y = N_VNewEmpty_Parallel(comm, 0, 0);  // calls MPI_Allreduce()
-      MFEM_VERIFY(y, "error in N_VNewEmpty_Parallel()");
-   }
-}
-#endif
 
 // ---------------------------------------------------------------------------
 // CVODE interface
@@ -878,17 +863,6 @@ void CVODESSolver::InitB(TimeDependentAdjointOperator &f_)
 
    // Get current time
    double tB = f_.GetTime();
-
-   // TODO: why is this here? global_size is never used
-   // does this need to function like Init ?
-// #ifdef MFEM_USE_MPI
-//    long global_size = 0;
-//    if (Parallel())
-//    {
-//       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-//                     yB->Communicator());
-//    }
-// #endif
 
    yB->SetSize(local_size);
 
