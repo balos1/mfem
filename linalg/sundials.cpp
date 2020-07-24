@@ -154,11 +154,10 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         auto content = static_cast<N_VectorContent_Cuda>(GET_CONTENT(x));
          dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostRead(), Read());
-         content->host_data = SUNMemoryHelper_Wrap(HostReadWrite(), SUNMEMTYPE_HOST);
-         content->device_data = SUNMemoryHelper_Wrap(ReadWrite(), SUNMEMTYPE_DEVICE);
-         content->length = size;
+         N_VSetHostArrayPointer_Cuda(HostReadWrite(), x);
+         N_VSetDeviceArrayPointer_Cuda(ReadWrite(), x);
+         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->length = size;
          break;
       }
 #endif
