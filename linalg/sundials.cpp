@@ -81,10 +81,10 @@ SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
    else
    {
       free(sunmem);
-      return(NULL);
+      return NULL;
    }
 
-   return(sunmem);
+   return sunmem;
 }
 
 void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
@@ -93,12 +93,14 @@ void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
    {
       if (sunmem->type == SUNMEMTYPE_HOST)
       {
-         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetHostMemoryType(), true);
+         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1,
+                            Device::GetHostMemoryType(), true);
          mem.Delete();
       }
       else if (sunmem->type == SUNMEMTYPE_DEVICE)
       {
-         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetDeviceMemoryType(), true);
+         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1,
+                            Device::GetDeviceMemoryType(), true);
          mem.Delete();
       }
       else
@@ -110,28 +112,28 @@ void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
 
 SUNMemoryHelper SundialsMemHelper()
 {
-  SUNMemoryHelper helper;
-  SUNMemoryHelper_Ops ops;
+   SUNMemoryHelper helper;
+   SUNMemoryHelper_Ops ops;
 
-  /* Create the ops */
-  ops = (SUNMemoryHelper_Ops) malloc(sizeof(struct _SUNMemoryHelper_Ops));
-  memset(ops, 0, sizeof(struct _SUNMemoryHelper_Ops));
+   /* Create the ops */
+   ops = (SUNMemoryHelper_Ops) malloc(sizeof(struct _SUNMemoryHelper_Ops));
+   memset(ops, 0, sizeof(struct _SUNMemoryHelper_Ops));
 
-  /* Set the ops */
-  ops->alloc     = SundialsMemHelper_Alloc;
-  ops->dealloc   = SundialsMemHelper_Dealloc;
-  ops->copy      = SUNMemoryHelper_Copy_Cuda;
-  ops->copyasync = SUNMemoryHelper_CopyAsync_Cuda;
+   /* Set the ops */
+   ops->alloc     = SundialsMemHelper_Alloc;
+   ops->dealloc   = SundialsMemHelper_Dealloc;
+   ops->copy      = SUNMemoryHelper_Copy_Cuda;
+   ops->copyasync = SUNMemoryHelper_CopyAsync_Cuda;
 
-  /* Allocate helper */
-  helper = (SUNMemoryHelper) malloc(sizeof(struct _SUNMemoryHelper));
-  memset(helper, 0, sizeof(struct _SUNMemoryHelper));
+   /* Allocate helper */
+   helper = (SUNMemoryHelper) malloc(sizeof(struct _SUNMemoryHelper));
+   memset(helper, 0, sizeof(struct _SUNMemoryHelper));
 
-  /* Attach user data and ops */
-  helper->content = NULL;
-  helper->ops     = ops;
+   /* Attach user data and ops */
+   helper->content = NULL;
+   helper->ops     = ops;
 
-  return helper;
+   return helper;
 }
 
 
@@ -271,7 +273,8 @@ SundialsNVector::SundialsNVector(MPI_Comm comm, int s, long global_s)
    own_NVector = 1;
 }
 
-SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size, long glob_size)
+SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size,
+                                 long glob_size)
    : Vector(_data, _size)
 {
    UseDevice(Device::IsAvailable());
@@ -364,7 +367,8 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
    return x;
 }
 
-N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device, Memory<double> data,
+N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device,
+                                      Memory<double> data,
                                       int loc_size, long glob_size)
 {
    N_Vector x;
@@ -1264,7 +1268,7 @@ ARKStepSolver::ARKStepSolver(MPI_Comm comm, Type type)
 
 void ARKStepSolver::Init(TimeDependentOperator &f_)
 {
- // Initialize the base class
+   // Initialize the base class
    ODESolver::Init(f_);
 
    // Get the vector length
