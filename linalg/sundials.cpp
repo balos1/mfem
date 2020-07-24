@@ -56,28 +56,28 @@ SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
                                   size_t memsize,
                                   SUNMemoryType mem_type)
 {
-   dbg("");
-
    int length = memsize/sizeof(double);
    SUNMemory sunmem = SUNMemoryNewEmpty();
-   Memory<double> *mem = new Memory<double>(length, Device::GetHostMemoryType());
 
    sunmem->ptr = NULL;
    sunmem->own = SUNTRUE;
 
    if (mem_type == SUNMEMTYPE_HOST || mem_type == SUNMEMTYPE_PINNED)
    {
-      sunmem->ptr  = mfem::HostReadWrite(*mem, length);
+      Memory<double> mem(length, Device::GetHostMemoryType());
+      sunmem->ptr  = mfem::HostReadWrite(mem, length);
       sunmem->type = SUNMEMTYPE_HOST;
+      mem.SetHostPtrOwner(false);
    }
    else if (mem_type == SUNMEMTYPE_DEVICE)
    {
-      sunmem->ptr  = mfem::ReadWrite(*mem, length);
+      Memory<double> mem(length, Device::GetDeviceMemoryType());
+      sunmem->ptr  = mfem::ReadWrite(mem, length);
       sunmem->type = SUNMEMTYPE_DEVICE;
+      mem.SetDevicePtrOwner(false);
    }
    else
    {
-      delete mem;
       free(sunmem);
       return(NULL);
    }
@@ -87,21 +87,15 @@ SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
 
 void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
 {
-   dbg("");
-
    if (!mm.IsKnown(sunmem->ptr))
    {
       if (sunmem->type == SUNMEMTYPE_HOST)
       {
-         Memory<double> *mem = new Memory<double>();
-         mem->Wrap(static_cast<double*>(sunmem->ptr), 1, Device::GetHostMemoryType(), true);
-         delete mem;
+         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetHostMemoryType(), true);
       }
       else if (sunmem->type == SUNMEMTYPE_DEVICE)
       {
-         Memory<double> *mem = new Memory<double>();
-         mem->Wrap(static_cast<double*>(sunmem->ptr), 1, Device::GetDeviceMemoryType(), true);
-         delete mem;
+         Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetDeviceMemoryType(), true);
       }
       else
       {
