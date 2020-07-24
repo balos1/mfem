@@ -65,16 +65,18 @@ SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
    if (mem_type == SUNMEMTYPE_HOST || mem_type == SUNMEMTYPE_PINNED)
    {
       Memory<double> mem(length, Device::GetHostMemoryType());
+      mem.SetHostPtrOwner(false);
       sunmem->ptr  = mfem::HostReadWrite(mem, length);
       sunmem->type = SUNMEMTYPE_HOST;
-      mem.SetHostPtrOwner(false);
+      mem.Delete();
    }
    else if (mem_type == SUNMEMTYPE_DEVICE)
    {
       Memory<double> mem(length, Device::GetDeviceMemoryType());
+      mem.SetDevicePtrOwner(false);
       sunmem->ptr  = mfem::ReadWrite(mem, length);
       sunmem->type = SUNMEMTYPE_DEVICE;
-      mem.SetDevicePtrOwner(false);
+      mem.Delete();
    }
    else
    {
@@ -87,15 +89,17 @@ SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
 
 void SundialsMemHelper_Dealloc(SUNMemoryHelper helper, SUNMemory sunmem)
 {
-   if (!mm.IsKnown(sunmem->ptr))
+   if (sunmem->ptr && sunmem->own && !mm.IsKnown(sunmem->ptr))
    {
       if (sunmem->type == SUNMEMTYPE_HOST)
       {
          Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetHostMemoryType(), true);
+         mem.Delete();
       }
       else if (sunmem->type == SUNMEMTYPE_DEVICE)
       {
          Memory<double> mem(static_cast<double*>(sunmem->ptr), 1, Device::GetDeviceMemoryType(), true);
+         mem.Delete();
       }
       else
       {
@@ -214,7 +218,6 @@ void SundialsNVector::_SetDataAndSize_()
          dbg("SUNDIALS_NVEC_CUDA: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
 
          const bool known = mm.IsKnown(h_ptr);
-
          size = N_VGetLength_Cuda(x);
          data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
          if (known) { data.ClearOwnerFlags(); }
