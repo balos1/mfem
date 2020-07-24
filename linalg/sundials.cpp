@@ -154,7 +154,6 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         dbg("SUNDIALS_NVEC_CUDA: h:%p d:%p", HostRead(), Read());
          N_VSetHostArrayPointer_Cuda(HostReadWrite(), x);
          N_VSetDeviceArrayPointer_Cuda(ReadWrite(), x);
          static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->length = size;
@@ -169,25 +168,17 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          NV_LOCLENGTH_P(x) = size;
          if (glob_size == 0)
          {
-            glob_size = NV_GLOBLENGTH_P(nv);
+            glob_size = NV_GLOBLENGTH_P(x);
 
             if (glob_size == 0 && glob_size != size)
             {
-               MPI_Comm sundials_comm = NV_COMM_P(nv);
+               MPI_Comm sundials_comm = NV_COMM_P(x);
                long local_size = size;
                MPI_Allreduce(&local_size, &glob_size, 1, MPI_LONG,
                              MPI_SUM,sundials_comm);
             }
          }
-         NV_GLOBLENGTH_P(nv) = glob_size;
-         break;
-      }
-      case SUNDIALS_NVEC_PARHYP:
-      {
-         hypre_Vector *hpv_local = N_VGetVector_ParHyp(x)->local_vector;
-         MFEM_ASSERT(hpv_local->owns_data == false, "invalid hypre N_Vector");
-         hpv_local->data = HostReadWrite();
-         hpv_local->size = size;
+         NV_GLOBLENGTH_P(x) = glob_size;
          break;
       }
 #endif
@@ -214,8 +205,6 @@ void SundialsNVector::_SetDataAndSize_()
       {
          double *h_ptr = N_VGetHostArrayPointer_Cuda(x);
          double *d_ptr = N_VGetDeviceArrayPointer_Cuda(x);
-         dbg("SUNDIALS_NVEC_CUDA: h:%p, d:%p & size:%d", h_ptr, d_ptr, size);
-
          const bool known = mm.IsKnown(h_ptr);
          size = N_VGetLength_Cuda(x);
          data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
@@ -230,15 +219,6 @@ void SundialsNVector::_SetDataAndSize_()
          const bool known = mm.IsKnown(NV_DATA_P(x));
          size = NV_LENGTH_S(x);
          data.Wrap(NV_DATA_P(x), NV_LOCLENGTH_P(x), false);
-         if (known) { data.ClearOwnerFlags(); }
-         break;
-      }
-      case SUNDIALS_NVEC_PARHYP:
-      {
-         hypre_Vector *hpv_local = N_VGetVector_ParHyp(x)->local_vector;
-         const bool known = mm.IsKnown(NV_DATA_P(x));
-         size = NV_LENGTH_S(x);
-         data.Wrap(hpv_local->data, hpv_local->size, false);
          if (known) { data.ClearOwnerFlags(); }
          break;
       }
@@ -280,14 +260,30 @@ SundialsNVector::SundialsNVector(MPI_Comm comm)
 {
    UseDevice(Device::IsAvailable());
    x = MakeNVector(comm, UseDevice());
+   own_NVector = 1;
 }
 
-SundialsNVector::SundialsNVector(MPI_Comm comm, int loc_size, long glob_size)
-   : Vector(loc_size)
+SundialsNVector::SundialsNVector(MPI_Comm comm, int s, long global_s)
+   : Vector(size)
 {
    UseDevice(Device::IsAvailable());
-   x = MakeNVector(comm, UseDevice(), data, loc_size, glob_size);
+   x = MakeNVector(comm, UseDevice(), data, s, global_s);
+   own_NVector = 1;
 }
+
+SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size, long glob_size)
+   : Vector(_data, _size)
+{
+   UseDevice(Device::IsAvailable());
+   x = MakeNVector(comm, UseDevice());
+   own_NVector = 1;
+   _SetNvecDataAndSize_();
+}
+
+SundialsNVector::SundialsNVector(HypreParVector& vec)
+   : SundialsNVector(vec.GetComm(), vec.GetData(), vec.Size(), vec.GlobalSize())
+{}
+
 #endif
 
 SundialsNVector::~SundialsNVector()
@@ -530,7 +526,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
    if (Parallel())
    {
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    Y->Communicator());
+                    Y->GetComm());
    }
 #endif
 
@@ -551,7 +547,7 @@ void CVODESolver::Init(TimeDependentOperator &f_)
          int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       Y->Communicator());
+                       Y->GetComm());
 #endif
       }
 
@@ -569,15 +565,9 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       // initial condition will be set using CVodeReInit() when Step() is
       // called.
 
-      dbg("!sundials_mem");
       if (!Parallel())
       {
-         dbg("\033[32mY SetSize");
          Y->SetSize(local_size);
-         Y->HostReadWrite();
-         //dbg("Y flags:"); Y->GetMemory().PrintFlags();
-         //dbg("Y: %p", (const double*)Y->GetMemory());
-         //dbg("Y flags:"); Y->GetMemory().PrintFlags();
       }
 #ifdef MFEM_USE_MPI
       else
@@ -618,8 +608,6 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    // Reinitialize CVODE memory if needed
    if (reinit)
    {
-      dbg("Reinit integrator");
-
       flag = CVodeReInit(sundials_mem, t, *Y);
       MFEM_VERIFY(flag == CV_SUCCESS, "error in CVodeReInit()");
       // reset flag
@@ -627,8 +615,6 @@ void CVODESolver::Step(Vector &x, double &t, double &dt)
    }
 
    // Integrate the system
-   dbg("Integrate the system");
-
    double tout = t + dt;
    flag = CVode(sundials_mem, tout, *Y, &t, step_mode);
    MFEM_VERIFY(flag >= 0, "error in CVode()");
@@ -1291,7 +1277,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
    {
 #ifdef MFEM_USE_MPI
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    Y->Communicator());
+                    Y->GetComm());
 #endif
    }
 
@@ -1312,7 +1298,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
          int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       Y->Communicator());
+                       Y->GetComm());
 #endif
       }
 
@@ -1731,7 +1717,7 @@ void KINSolver::SetOperator(const Operator &op)
    {
 #ifdef MFEM_USE_MPI
       MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
-                    Y->Communicator());
+                    Y->GetComm());
 #endif
    }
 
@@ -1749,7 +1735,7 @@ void KINSolver::SetOperator(const Operator &op)
          int l_resize = (Y->Size() != local_size) ||
                         (saved_global_size != global_size);
          MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
-                       Y->Communicator());
+                       Y->GetComm());
 #endif
       }
 
@@ -1905,7 +1891,7 @@ void KINSolver::Mult(const Vector&, Vector &x) const
       {
          double lnorm = norm;
          MPI_Allreduce(&lnorm, &norm, 1, MPI_DOUBLE, MPI_MAX,
-                       Y->Communicator());
+                       Y->GetComm());
       }
 #endif
       if (abs_tol > rel_tol * norm)
@@ -1954,7 +1940,7 @@ void KINSolver::Mult(Vector &x,
 
 #ifdef MFEM_USE_MPI
       int rank;
-      MPI_Comm_rank(Y->Communicator(), &rank);
+      MPI_Comm_rank(Y->GetComm(), &rank);
       if (rank == 0)
       {
          flag = KINSetPrintLevel(sundials_mem, print_level);

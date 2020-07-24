@@ -19,6 +19,7 @@
 
 #ifdef MFEM_USE_MPI
 #include <mpi.h>
+#include "hypre.hpp"
 #endif
 
 #ifdef MFEM_USE_CUDA
@@ -84,6 +85,15 @@ public:
 
    /// Creates a SundialsNVector with the given local and global sizes.
    SundialsNVector(MPI_Comm comm, int loc_size, long glob_size);
+
+   /// Creates a SundialsNVector referencing an array of doubles, owned by someone else.
+   /** The pointer @a _data can be NULL. The data array can be replaced later
+       with SetData(). */
+   SundialsNVector(MPI_Comm comm, double *_data, int _size, long glob_size);
+
+   /// Creates a SundialsNVector from a HypreParVector.
+   /** Ownership of the data will not change. */
+   SundialsNVector(HypreParVector& vec);
 #endif
 
    /// Calls SUNDIALS N_VDestroy function if the N_Vector is owned by 'this'.
@@ -94,7 +104,7 @@ public:
 
 #ifdef MFEM_USE_MPI
    /// Returns the MPI commmunicator for the internal N_Vector x.
-   inline MPI_Comm Communicator() const { return *static_cast<MPI_Comm*>(N_VGetCommunicator(x)); }
+   inline MPI_Comm GetComm() const { return *static_cast<MPI_Comm*>(N_VGetCommunicator(x)); }
 
    /// Returns the MPI global length for the internal N_Vector x.
    inline int GlobalSize() const { return N_VGetLength(x); }

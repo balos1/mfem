@@ -1167,6 +1167,10 @@ vector_min_cpu:
 
 #ifdef MFEM_USE_SUNDIALS
 
+//
+// TODO: recommend that these are removed, or at least deprecated.
+//
+
 Vector::Vector(N_Vector nv)
 {
    N_Vector_ID nvid = N_VGetVectorID(nv);
