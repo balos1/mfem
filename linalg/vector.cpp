@@ -21,7 +21,6 @@
 #if defined(MFEM_USE_MPI)
 #include <nvector/nvector_mpiplusx.h>
 #include <nvector/nvector_parallel.h>
-#include <nvector/nvector_parhyp.h>
 #endif
 #if defined(MFEM_USE_CUDA)
 #include <nvector/nvector_cuda.h>

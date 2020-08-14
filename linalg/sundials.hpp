@@ -102,12 +102,15 @@ public:
    /// Returns the N_Vector_ID for the internal N_Vector.
    inline N_Vector_ID GetNVectorID() const { return N_VGetVectorID(x); }
 
+   /// Returns the N_Vector_ID for the N_Vector @a _x.
+   inline N_Vector_ID GetNVectorID(N_Vector _x) const { return N_VGetVectorID(_x); }
+
 #ifdef MFEM_USE_MPI
    /// Returns the MPI commmunicator for the internal N_Vector x.
    inline MPI_Comm GetComm() const { return *static_cast<MPI_Comm*>(N_VGetCommunicator(x)); }
 
    /// Returns the MPI global length for the internal N_Vector x.
-   inline int GlobalSize() const { return N_VGetLength(x); }
+   inline long GlobalSize() const { return N_VGetLength(x); }
 #endif
 
    /// Resize the vector to size @a s.
@@ -169,6 +172,13 @@ public:
                                int loc_size, long glob_size);
 #endif
 
+#ifdef MFEM_USE_MPI
+   bool MPIPlusX() const
+   { return (GetNVectorID() == SUNDIALS_NVEC_MPIPLUSX); }
+#else
+   bool MPIPlusX() const { return false; }
+#endif
+
 };
 
 /// Base class for interfacing with SUNDIALS packages.
@@ -190,7 +200,7 @@ protected:
 
 #ifdef MFEM_USE_MPI
    bool Parallel() const
-   { return (Y->GetNVectorID() != SUNDIALS_NVEC_SERIAL) && (Y->GetNVectorID() != SUNDIALS_NVEC_CUDA); }
+   { return (Y->MPIPlusX() || Y->GetNVectorID() == SUNDIALS_NVEC_PARALLEL); }
 #else
    bool Parallel() const { return false; }
 #endif

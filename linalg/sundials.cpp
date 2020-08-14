@@ -26,7 +26,6 @@
 #ifdef MFEM_USE_MPI
 #include <nvector/nvector_mpiplusx.h>
 #include <nvector/nvector_parallel.h>
-#include <nvector/nvector_parhyp.h>
 #endif
 
 // SUNDIALS linear solvers
@@ -143,22 +142,25 @@ SUNMemoryHelper SundialsMemHelper()
 
 void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 {
+   N_Vector local_x = MPIPlusX() ? N_VGetLocalVector_MPIPlusX(x) : x;
+   N_Vector_ID id = MPIPlusX() ? N_VGetVectorID(local_x) : N_VGetVectorID(x);
+
    // Set the N_Vector data and length from the Vector data and size.
-   switch (GetNVectorID())
+   switch (id)
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         MFEM_ASSERT(NV_OWN_DATA_S(x) == SUNFALSE, "invalid serial N_Vector");
-         NV_DATA_S(x) = HostReadWrite();
-         NV_LENGTH_S(x) = size;
+         MFEM_ASSERT(NV_OWN_DATA_S(local_x) == SUNFALSE, "invalid serial N_Vector");
+         NV_DATA_S(local_x) = HostReadWrite();
+         NV_LENGTH_S(local_x) = size;
          break;
       }
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         N_VSetHostArrayPointer_Cuda(HostReadWrite(), x);
-         N_VSetDeviceArrayPointer_Cuda(ReadWrite(), x);
-         static_cast<N_VectorContent_Cuda>(GET_CONTENT(x))->length = size;
+         N_VSetHostArrayPointer_Cuda(HostReadWrite(), local_x);
+         N_VSetDeviceArrayPointer_Cuda(ReadWrite(), local_x);
+         static_cast<N_VectorContent_Cuda>(GET_CONTENT(local_x))->length = size;
          break;
       }
 #endif
@@ -170,14 +172,13 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          NV_LOCLENGTH_P(x) = size;
          if (glob_size == 0)
          {
-            glob_size = NV_GLOBLENGTH_P(x);
+            glob_size = GlobalSize();
 
             if (glob_size == 0 && glob_size != size)
             {
-               MPI_Comm sundials_comm = NV_COMM_P(x);
                long local_size = size;
                MPI_Allreduce(&local_size, &glob_size, 1, MPI_LONG,
-                             MPI_SUM,sundials_comm);
+                             MPI_SUM, GetComm());
             }
          }
          NV_GLOBLENGTH_P(x) = glob_size;
@@ -185,30 +186,51 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
       }
 #endif
       default:
-         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
+         MFEM_ABORT("N_Vector type " << id << " is not supported");
    }
+
+#ifdef MFEM_USE_MPI
+   if (MPIPlusX())
+   {
+      if (glob_size == 0)
+      {
+         glob_size = GlobalSize();
+
+         if (glob_size == 0 && glob_size != size)
+         {
+            long local_size = size;
+            MPI_Allreduce(&local_size, &glob_size, 1, MPI_LONG,
+                           MPI_SUM, GetComm());
+         }
+      }
+      N_VResize_MPIPlusX(x, glob_size);
+   }
+#endif
 }
 
 void SundialsNVector::_SetDataAndSize_()
 {
+   N_Vector local_x = MPIPlusX() ? N_VGetLocalVector_MPIPlusX(x) : x;
+   N_Vector_ID id = MPIPlusX() ? N_VGetVectorID(local_x) : N_VGetVectorID(x);
+
    // The SUNDIALS NVector owns the data if it created it.
-   switch (GetNVectorID())
+   switch (id)
    {
       case SUNDIALS_NVEC_SERIAL:
       {
-         const bool known = mm.IsKnown(NV_DATA_S(x));
-         size = NV_LENGTH_S(x);
-         data.Wrap(NV_DATA_S(x), size, false);
+         const bool known = mm.IsKnown(NV_DATA_S(local_x));
+         size = NV_LENGTH_S(local_x);
+         data.Wrap(NV_DATA_S(local_x), size, false);
          if (known) { data.ClearOwnerFlags(); }
          break;
       }
 #ifdef MFEM_USE_CUDA
       case SUNDIALS_NVEC_CUDA:
       {
-         double *h_ptr = N_VGetHostArrayPointer_Cuda(x);
-         double *d_ptr = N_VGetDeviceArrayPointer_Cuda(x);
+         double *h_ptr = N_VGetHostArrayPointer_Cuda(local_x);
+         double *d_ptr = N_VGetDeviceArrayPointer_Cuda(local_x);
          const bool known = mm.IsKnown(h_ptr);
-         size = N_VGetLength_Cuda(x);
+         size = N_VGetLength_Cuda(local_x);
          data.Wrap(h_ptr, d_ptr, size, Device::GetHostMemoryType(), false);
          if (known) { data.ClearOwnerFlags(); }
          UseDevice(true);
@@ -226,7 +248,7 @@ void SundialsNVector::_SetDataAndSize_()
       }
 #endif
       default:
-         MFEM_ABORT("N_Vector type " << GetNVectorID() << " is not supported");
+         MFEM_ABORT("N_Vector type " << id << " is not supported");
    }
 }
 
@@ -286,13 +308,16 @@ SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size,
 SundialsNVector::SundialsNVector(HypreParVector& vec)
    : SundialsNVector(vec.GetComm(), vec.GetData(), vec.Size(), vec.GlobalSize())
 {}
-
 #endif
 
 SundialsNVector::~SundialsNVector()
 {
    if (own_NVector)
    {
+      if (MPIPlusX())
+      {
+         N_VDestroy(N_VGetLocalVector_MPIPlusX(x));
+      }
       N_VDestroy(x);
    }
 }
@@ -355,10 +380,12 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
       }
       else
       {
-         x = N_VNewEmpty_Parallel(comm, 0, 0);
+         // x = N_VNewEmpty_Parallel(comm, 0, 0);
+         x = N_VMake_MPIPlusX(comm, N_VNewEmpty_Serial(0));
       }
 #else
-      x = N_VNewEmpty_Parallel(comm, 0, 0);
+      // x = N_VNewEmpty_Parallel(comm, 0, 0);
+      x = N_VMake_MPIPlusX(comm, N_VNewEmpty_Serial(0));
 #endif // MFEM_USE_CUDA
    }
 
@@ -386,12 +413,14 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device,
       }
       else
       {
-         x = N_VMake_Parallel(comm, loc_size, glob_size,
-                              mfem::ReadWrite(data, loc_size, false));
+         // x = N_VMake_Parallel(comm, loc_size, glob_size,
+         //                      mfem::ReadWrite(data, loc_size, false));
+         x = N_VMake_MPIPlusX(comm, N_VMake_Serial(loc_size, mfem::ReadWrite(data, loc_size, false)));
       }
 #else
-      x = N_VMake_Parallel(comm, loc_size, glob_size,
-                           mfem::ReadWrite(data, loc_size, false));
+      // x = N_VMake_Parallel(comm, loc_size, glob_size,
+      //                      mfem::ReadWrite(data, loc_size, false));
+      x = N_VMake_MPIPlusX(comm, N_VMake_Serial(loc_size, mfem::ReadWrite(data, loc_size, false)));
 #endif // MFEM_USE_CUDA
    }
 
