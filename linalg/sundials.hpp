@@ -161,15 +161,6 @@ public:
    /** @param[in] comm  The MPI communicator to use.
        @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector. */
    static N_Vector MakeNVector(MPI_Comm comm, bool use_device);
-
-   /// Create a N_Vector using @wrap for the data and @s for the size.
-   /** @param[in] comm  The MPI communicator to use.
-       @param[in] use_device  If true, use the SUNDIALS CUDA N_Vector.
-       @param[in] wrap  The data attached to the SUNDIALS N_Vector.
-       @param[in] loc_size  The size of the vector.
-       @param[in] glob_size  The global size of the vector. */
-   static N_Vector MakeNVector(MPI_Comm comm, bool use_device, Memory<double> wrap,
-                               int loc_size, long glob_size);
 #endif
 
 #ifdef MFEM_USE_MPI

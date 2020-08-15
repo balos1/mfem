@@ -287,12 +287,13 @@ SundialsNVector::SundialsNVector(MPI_Comm comm)
    own_NVector = 1;
 }
 
-SundialsNVector::SundialsNVector(MPI_Comm comm, int s, long global_s)
+SundialsNVector::SundialsNVector(MPI_Comm comm, int s, long glob_size)
    : Vector(size)
 {
    UseDevice(Device::IsAvailable());
-   x = MakeNVector(comm, UseDevice(), data, s, global_s);
+   x = MakeNVector(comm, UseDevice());
    own_NVector = 1;
+   _SetNvecDataAndSize_(glob_size);
 }
 
 SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size,
@@ -302,7 +303,7 @@ SundialsNVector::SundialsNVector(MPI_Comm comm, double *_data, int _size,
    UseDevice(Device::IsAvailable());
    x = MakeNVector(comm, UseDevice());
    own_NVector = 1;
-   _SetNvecDataAndSize_();
+   _SetNvecDataAndSize_(glob_size);
 }
 
 SundialsNVector::SundialsNVector(HypreParVector& vec)
@@ -376,7 +377,7 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 #ifdef MFEM_USE_CUDA
       if (use_device)
       {
-         MFEM_ABORT("MPI+CUDA not yet supported by sundials interface");
+         x = N_VMake_MPIPlusX(comm, N_VNewCustom_Cuda(0, SundialsMemHelper()));
       }
       else
       {
@@ -386,41 +387,6 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 #else
       // x = N_VNewEmpty_Parallel(comm, 0, 0);
       x = N_VMake_MPIPlusX(comm, N_VNewEmpty_Serial(0));
-#endif // MFEM_USE_CUDA
-   }
-
-   MFEM_VERIFY(x, "Error in SundialsNVector::MakeNVector.");
-
-   return x;
-}
-
-N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device,
-                                      Memory<double> data,
-                                      int loc_size, long glob_size)
-{
-   N_Vector x;
-
-   if (comm == MPI_COMM_NULL)
-   {
-      x = MakeNVector(use_device);
-   }
-   else
-   {
-#ifdef MFEM_USE_CUDA
-      if (use_device)
-      {
-         MFEM_ABORT("MPI+CUDA not yet supported by sundials interface");
-      }
-      else
-      {
-         // x = N_VMake_Parallel(comm, loc_size, glob_size,
-         //                      mfem::ReadWrite(data, loc_size, false));
-         x = N_VMake_MPIPlusX(comm, N_VMake_Serial(loc_size, mfem::ReadWrite(data, loc_size, false)));
-      }
-#else
-      // x = N_VMake_Parallel(comm, loc_size, glob_size,
-      //                      mfem::ReadWrite(data, loc_size, false));
-      x = N_VMake_MPIPlusX(comm, N_VMake_Serial(loc_size, mfem::ReadWrite(data, loc_size, false)));
 #endif // MFEM_USE_CUDA
    }
 
