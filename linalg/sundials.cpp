@@ -203,7 +203,7 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
                            MPI_SUM, GetComm());
          }
       }
-      N_VResize_MPIPlusX(x, glob_size);
+      static_cast<N_VectorContent_MPIPlusX>(GET_CONTENT(x))->global_length = glob_size;
    }
 #endif
 }
