@@ -160,8 +160,9 @@ public:
    ~HypreParVector();
 
 #ifdef MFEM_USE_SUNDIALS
+   // TODO: I think this should be removed, but not sure if it might break old code.
+
    using Vector::ToNVector;
-   /// TODO: Recommend that this is removed or deprecated.
 
    /// Return a new wrapper SUNDIALS N_Vector of type SUNDIALS_NVEC_PARALLEL.
    /** The returned N_Vector must be destroyed by the caller. */
