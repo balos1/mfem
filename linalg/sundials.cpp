@@ -22,6 +22,7 @@
 #include <nvector/nvector_serial.h>
 #ifdef MFEM_USE_CUDA
 #include <nvector/nvector_cuda.h>
+#include <sunmemory/sunmemory_cuda.h>
 #endif
 #ifdef MFEM_USE_MPI
 #include <nvector/nvector_mpiplusx.h>
@@ -33,9 +34,6 @@
 
 // SUNDIALS memory interface
 #include <sundials/sundials_memory.h>
-#ifdef MFEM_USE_CUDA
-#include <sunmemory/sunmemory_cuda.h>
-#endif
 
 // Access SUNDIALS object's content pointer
 #define GET_CONTENT(X) ( X->content )
@@ -53,6 +51,7 @@ namespace mfem
 // TODO: need to handle MFEM UVM
 //
 
+#ifdef MFEM_USE_CUDA
 SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
                                   size_t memsize,
                                   SUNMemoryType mem_type)
@@ -138,6 +137,7 @@ SUNMemoryHelper SundialsMemHelper()
 
    return helper;
 }
+#endif
 
 
 // ---------------------------------------------------------------------------
@@ -146,8 +146,13 @@ SUNMemoryHelper SundialsMemHelper()
 
 void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 {
+#ifdef MFEM_USE_MPI
    N_Vector local_x = MPIPlusX() ? N_VGetLocalVector_MPIPlusX(x) : x;
    N_Vector_ID id = MPIPlusX() ? N_VGetVectorID(local_x) : N_VGetVectorID(x);
+#else
+   N_Vector local_x = x;
+   N_Vector_ID id = N_VGetVectorID(x);
+#endif
 
    // Set the N_Vector data and length from the Vector data and size.
    switch (id)
@@ -215,8 +220,14 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
 
 void SundialsNVector::_SetDataAndSize_()
 {
+#ifdef MFEM_USE_MPI
    N_Vector local_x = MPIPlusX() ? N_VGetLocalVector_MPIPlusX(x) : x;
    N_Vector_ID id = MPIPlusX() ? N_VGetVectorID(local_x) : N_VGetVectorID(x);
+#else
+   N_Vector local_x = x;
+   N_Vector_ID id = N_VGetVectorID(x);
+#endif
+
 
    // The SUNDIALS NVector owns the data if it created it.
    switch (id)
@@ -320,10 +331,12 @@ SundialsNVector::~SundialsNVector()
 {
    if (own_NVector)
    {
+#ifdef MFEM_USE_MPI
       if (MPIPlusX())
       {
          N_VDestroy(N_VGetLocalVector_MPIPlusX(x));
       }
+#endif
       N_VDestroy(x);
    }
 }
@@ -368,7 +381,6 @@ N_Vector SundialsNVector::MakeNVector(bool use_device)
 }
 
 #ifdef MFEM_USE_MPI
-
 N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 {
    N_Vector x;
@@ -399,7 +411,6 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 
    return x;
 }
-
 #endif // MFEM_USE_MPI
 
 
