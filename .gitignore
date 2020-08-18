@@ -103,8 +103,10 @@ examples/ex25-*.gf
 examples/ex25p-*.*
 
 examples/sundials/ex9
+examples/sundials/ex9-cuda
 examples/sundials/ex1[06]
 examples/sundials/ex9p
+examples/sundials/ex9p-cuda
 examples/sundials/ex1[06]p
 
 examples/sundials/ex9.mesh
