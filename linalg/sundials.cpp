@@ -33,7 +33,9 @@
 
 // SUNDIALS memory interface
 #include <sundials/sundials_memory.h>
+#ifdef MFEM_USE_CUDA
 #include <sunmemory/sunmemory_cuda.h>
+#endif
 
 // Access SUNDIALS object's content pointer
 #define GET_CONTENT(X) ( X->content )
@@ -121,8 +123,10 @@ SUNMemoryHelper SundialsMemHelper()
    /* Set the ops */
    ops->alloc     = SundialsMemHelper_Alloc;
    ops->dealloc   = SundialsMemHelper_Dealloc;
+#ifdef MFEM_USE_CUDA
    ops->copy      = SUNMemoryHelper_Copy_Cuda;
    ops->copyasync = SUNMemoryHelper_CopyAsync_Cuda;
+#endif
 
    /* Allocate helper */
    helper = (SUNMemoryHelper) malloc(sizeof(struct _SUNMemoryHelper));
@@ -200,10 +204,11 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          {
             long local_size = size;
             MPI_Allreduce(&local_size, &glob_size, 1, MPI_LONG,
-                           MPI_SUM, GetComm());
+                          MPI_SUM, GetComm());
          }
       }
-      static_cast<N_VectorContent_MPIPlusX>(GET_CONTENT(x))->global_length = glob_size;
+      static_cast<N_VectorContent_MPIPlusX>(GET_CONTENT(x))->global_length =
+         glob_size;
    }
 #endif
 }
@@ -288,7 +293,7 @@ SundialsNVector::SundialsNVector(MPI_Comm comm)
 }
 
 SundialsNVector::SundialsNVector(MPI_Comm comm, int s, long glob_size)
-   : Vector(size)
+   : Vector(glob_size) // size is uninitialized when used here
 {
    UseDevice(Device::IsAvailable());
    x = MakeNVector(comm, UseDevice());
