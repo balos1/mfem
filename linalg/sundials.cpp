@@ -1373,8 +1373,7 @@ void ARKStepSolver::Init(TimeDependentOperator &f_)
 
 void ARKStepSolver::Step(Vector &x, double &t, double &dt)
 {
-   Y->SetData(x.GetMemory());
-
+   Y->MakeRef(x, 0, x.Size());
    MFEM_VERIFY(Y->Size() == x.Size(), "");
 
    // Reinitialize ARKStep memory if needed
@@ -1941,9 +1940,9 @@ void KINSolver::Mult(Vector &x,
    flag = KINSetNumMaxIters(sundials_mem, max_iter);
    MFEM_ASSERT(flag == KIN_SUCCESS, "KINSetNumMaxIters() failed!");
 
-   Y->SetData(x.GetMemory());
-   y_scale->SetData(const_cast<Memory<double>&>(x_scale.GetMemory()));
-   f_scale->SetData(const_cast<Memory<double>&>(fx_scale.GetMemory()));
+   Y->MakeRef(x, 0, x.Size());
+   y_scale->MakeRef(const_cast<Vector&>(x_scale), 0, x_scale.Size());
+   f_scale->MakeRef(const_cast<Vector&>(fx_scale), 0, fx_scale.Size());
 
    if (!Parallel())
    {
