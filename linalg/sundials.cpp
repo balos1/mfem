@@ -47,10 +47,6 @@ namespace mfem
 // SUNMemory interface functions
 // ---------------------------------------------------------------------------
 
-//
-// TODO: need to handle MFEM UVM
-//
-
 #ifdef MFEM_USE_CUDA
 SUNMemory SundialsMemHelper_Alloc(SUNMemoryHelper helper,
                                   size_t memsize,
