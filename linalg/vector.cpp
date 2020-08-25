@@ -11,7 +11,6 @@
 
 // Implementation of data type vector
 
-#include "../general/dbg.hpp"
 #include "kernels.hpp"
 #include "vector.hpp"
 #include "../general/forall.hpp"
