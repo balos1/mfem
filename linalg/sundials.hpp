@@ -22,10 +22,6 @@
 #include "hypre.hpp"
 #endif
 
-#ifdef MFEM_USE_CUDA
-#include <nvector/nvector_cuda.h>
-#endif
-
 #include "ode.hpp"
 #include "solvers.hpp"
 
@@ -36,9 +32,13 @@
 #endif
 #include <sundials/sundials_matrix.h>
 #include <sundials/sundials_linearsolver.h>
-#include <cvodes/cvodes.h>
 #include <arkode/arkode_arkstep.h>
+#include <cvodes/cvodes.h>
 #include <kinsol/kinsol.h>
+#ifdef MFEM_USE_CUDA
+#include <nvector/nvector_cuda.h>
+#endif
+
 
 #include <functional>
 
