@@ -129,9 +129,25 @@ public:
    /// Reset the Vector to be a reference to a sub-vector of @a base.
    inline void MakeRef(Vector &base, int offset, int s)
    {
-      data.Delete();
-      size = s;
-      data.MakeAlias(base.GetMemory(), offset, s);
+      // Ensure that the base mem is registered before an alias is made
+      if (!mm.IsKnown(base.GetMemory()))
+      {
+         base.Read();
+      }
+      Vector::MakeRef(base, offset, s);
+      _SetNvecDataAndSize_();
+   }
+
+   /** @brief Reset the Vector to be a reference to a sub-vector of @a base
+       without changing its current size. */
+   inline void MakeRef(Vector &base, int offset)
+   {
+      // Ensure that the base mem is registered before an alias is made
+      if (!mm.IsKnown(base.GetMemory()))
+      {
+         base.Read();
+      }
+      Vector::MakeRef(base, offset);
       _SetNvecDataAndSize_();
    }
 

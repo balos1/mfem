@@ -305,10 +305,6 @@ int main(int argc, char *argv[])
    //    a file and (optionally) save data in the VisIt format and initialize
    //    GLVis visualization.
    GridFunction u(&fes);
-   u = 0.0; // TODO: without this, mm.IsKnown(u.HostRead()) is false
-   // mm.PrintPtrs();
-   // if (strcmp(device_config, "cpu") != 0)
-   // { MFEM_VERIFY(mm.IsKnown(u.HostRead()),""); }
    u.ProjectCoefficient(u0);
 
    {
