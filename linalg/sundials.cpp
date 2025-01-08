@@ -2056,8 +2056,8 @@ int SPRKStepSolver::RHSF(sunrealtype t, const N_Vector y, N_Vector result,
                          void *user_data)
 {
    // Get data from N_Vectors
-   const SundialsNVector mfem_q(N_VGetSubvector_ManyVector(y, 1));
-   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 0));
+   const SundialsNVector mfem_q(N_VGetSubvector_ManyVector(y, 0));
+   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 1));
    SPRKStepSolver *self = static_cast<SPRKStepSolver*>(user_data);
 
    // Check that the ODE is not expressed in EXPLICIT form
@@ -2075,8 +2075,8 @@ int SPRKStepSolver::RHSP(sunrealtype t, const N_Vector y, N_Vector result,
                          void *user_data)
 {
    // Get data from N_Vectors
-   const SundialsNVector mfem_p(N_VGetSubvector_ManyVector(y, 0));
-   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 1));
+   const SundialsNVector mfem_p(N_VGetSubvector_ManyVector(y, 1));
+   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 0));
    SPRKStepSolver *self = static_cast<SPRKStepSolver*>(user_data);
 
    // Compute P = dT/dp in dp/dt = P
