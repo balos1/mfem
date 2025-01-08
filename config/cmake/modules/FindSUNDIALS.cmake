@@ -20,6 +20,8 @@ mfem_find_package(SUNDIALS SUNDIALS SUNDIALS_DIR
   "Paths to headers required by SUNDIALS." "Libraries required by SUNDIALS."
   ADD_COMPONENT NVector_Serial
     "include" nvector/nvector_serial.h "lib" sundials_nvecserial
+  ADD_COMPONENT NVector_ManyVector
+    "include" nvector/nvector_manyvector.h "lib" sundials_nvecmanyvector
   ADD_COMPONENT NVector_Cuda
     "include" nvector/nvector_cuda.h "lib" sundials_nveccuda
   ADD_COMPONENT NVector_Hip

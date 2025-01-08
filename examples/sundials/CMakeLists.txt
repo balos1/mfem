@@ -14,6 +14,7 @@ list(APPEND SUNDIALS_EXAMPLES_SRCS
   ex9.cpp
   ex10.cpp
   ex16.cpp
+  ex20.cpp
   )
 
 if (MFEM_USE_MPI)

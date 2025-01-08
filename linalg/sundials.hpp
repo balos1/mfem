@@ -44,6 +44,7 @@
 #include <sundials/sundials_matrix.h>
 #include <sundials/sundials_linearsolver.h>
 #include <arkode/arkode_arkstep.h>
+#include <arkode/arkode_sprkstep.h>
 #include <cvodes/cvodes.h>
 #include <kinsol/kinsol.h>
 #if defined(MFEM_USE_CUDA)
@@ -226,7 +227,7 @@ protected:
 
 public:
    /// Creates an empty SundialsNVector.
-   SundialsNVector();
+   SundialsNVector(bool partition = false);
 
    /// Creates a SundialsNVector referencing an array of doubles, owned by someone else.
    /** The pointer @a data_ can be NULL. The data array can be replaced later
@@ -337,6 +338,9 @@ public:
    /// Create a N_Vector.
    /** @param[in] use_device  If true, use the SUNDIALS CUDA or HIP N_Vector. */
    static N_Vector MakeNVector(bool use_device);
+
+   template<int num_vecs>
+   static N_Vector MakeManyNVector(bool use_device);
 
 #ifdef MFEM_USE_MPI
    /// Create a parallel N_Vector.
@@ -874,6 +878,98 @@ public:
 
    /// Destroy the associated ARKode memory and SUNDIALS objects.
    virtual ~ARKStepSolver();
+
+};
+
+// ---------------------------------------------------------------------------
+// Interface to ARKode's SPRKStep module -- Symplectic Partitioned Runge-Kutta methods
+// ---------------------------------------------------------------------------
+
+/// Interface to ARKode's ARKStep module -- symplectic partitioned Runge-Kutta methods.
+
+/** SPRK is designed for systems of first
+    order ODEs derived from a Hamiltonian.
+       H(q,p,t) = T(p) + V(q,t)
+    Which leads to the equations:
+       dq/dt = dT/dp
+       dp/dt = -dV/dq
+    In the integrator the operators P and F are defined to be:
+       P = dT/dp
+       F = -dV/dq
+ */
+class SPRKStepSolver : public SIASolver, public SundialsSolver
+{
+protected:
+   SundialsNVector* q_;
+   SundialsNVector* p_;
+
+   int step_mode;     ///< ARKStep step mode (ARK_NORMAL or ARK_ONE_STEP).
+
+   /** @name Wrappers to compute the ODE RHS functions.
+       RHSF represents computes F and RHSP computes P. */
+   ///@{
+   static int RHSF(sunrealtype t, const N_Vector y, N_Vector ydot,
+                   void *user_data);
+   static int RHSP(sunrealtype t, const N_Vector y, N_Vector ydot,
+                   void *user_data);
+   ///@}
+
+public:
+   /// Construct a serial wrapper to SUNDIALS' ARKode integrator.
+   SPRKStepSolver();
+
+#ifdef MFEM_USE_MPI
+   /// Construct a parallel wrapper to SUNDIALS' ARKode integrator.
+   /** @param[in] comm The MPI communicator used to partition the ODE system. */
+   SPRKStepSolver(MPI_Comm comm);
+#endif
+
+   /** @brief Initialize ARKode: calls SPRKStepCreate() to create the SPRKStep
+       memory and set some defaults.
+
+       If the SPRKStep has already been created, it checks if the problem size
+       has changed since the last call to Init(). If the problem is the same
+       then SPRKStepReInit() will be called in the next call to Step(). If the
+       problem size has changed, the SPRKStep memory is freed and realloced
+       for the new problem size. */
+   /** @param[in] F The TimeDependentOperator that defines the F partition of the ODE system
+       @param[in] P the Operator that defines the P partition of the ODE system
+
+       @note All other methods must be called after Init().
+
+       @note If this method is called a second time with a different problem
+       size, then any non-default user-set options will be lost and will need
+       to be set again. */
+   void Init(Operator &P, TimeDependentOperator &F) override;
+
+   /// Integrate the ODE with ARKode using the specified step mode.
+   /**
+       @param[in,out] x  On output, the solution vector at the requested output
+                         time, tout = @a t + @a dt
+       @param[in,out] t  On output, the output time reached
+       @param[in,out] dt On output, the last time step taken
+
+       @note On input, the values of @a t and @a dt are used to compute desired
+       output time for the integration, tout = @a t + @a dt.
+   */
+   void Step(Vector&q, Vector &p, real_t &t, real_t &dt) override;
+
+   /// Select the ARKode step mode: ARK_NORMAL (default) or ARK_ONE_STEP.
+   /** @param[in] itask  The desired step mode */
+   void SetStepMode(int itask);
+
+   /// Set the fixed time step size.
+   void SetFixedStep(double dt);
+
+   /// Chooses integration order for all explicit / implicit / IMEX methods.
+   /** The default is 4, and the allowed values are: 1, 2, 3, 4, 5, 6, 8, 10. */
+   void SetOrder(int order);
+
+   /// Print various SPRKStep statistics.
+   void PrintInfo() const;
+
+   /// Destroy the associated ARKode memory and SUNDIALS objects.
+   virtual ~SPRKStepSolver();
 
 };
 

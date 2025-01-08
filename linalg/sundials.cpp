@@ -10,6 +10,7 @@
 // CONTRIBUTING.md for details.
 
 #include "sundials.hpp"
+#include "ode.hpp"
 
 #ifdef MFEM_USE_SUNDIALS
 
@@ -20,12 +21,14 @@
 
 // SUNDIALS vectors
 #include <nvector/nvector_serial.h>
+#include <nvector/nvector_manyvector.h>
 #if defined(MFEM_USE_CUDA)
 #include <nvector/nvector_cuda.h>
 #elif defined(MFEM_USE_HIP)
 #include <nvector/nvector_hip.h>
 #endif
 #ifdef MFEM_USE_MPI
+#include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_mpiplusx.h>
 #include <nvector/nvector_parallel.h>
 #endif
@@ -363,6 +366,11 @@ void SundialsNVector::_SetNvecDataAndSize_(long glob_size)
          NV_LENGTH_S(local_x) = size;
          break;
       }
+      case SUNDIALS_NVEC_MANYVECTOR:
+      {
+
+         break;
+      }
 #if defined(MFEM_USE_CUDA) || defined(MFEM_USE_HIP)
       case SUN_HIP_OR_CUDA(SUNDIALS_NVEC):
       {
@@ -438,6 +446,10 @@ void SundialsNVector::_SetDataAndSize_()
          if (known) { data.ClearOwnerFlags(); }
          break;
       }
+      case SUNDIALS_NVEC_MANYVECTOR:
+      {
+         break;
+      }
 #if defined(MFEM_USE_CUDA) || defined(MFEM_USE_HIP)
       case SUN_HIP_OR_CUDA(SUNDIALS_NVEC):
       {
@@ -466,14 +478,22 @@ void SundialsNVector::_SetDataAndSize_()
    }
 }
 
-SundialsNVector::SundialsNVector()
+SundialsNVector::SundialsNVector(bool partition)
    : Vector()
 {
-   // MFEM creates and owns the data,
-   // and provides it to the SUNDIALS NVector.
-   UseDevice(Device::IsAvailable());
-   x = MakeNVector(UseDevice());
-   own_NVector = 1;
+   if (partition) {
+      // MFEM creates and owns the data,
+      // and provides it to the SUNDIALS NVector.
+      UseDevice(Device::IsAvailable());
+      x = MakeManyNVector<2>(UseDevice());
+      own_NVector = 1;
+   } else {
+      // MFEM creates and owns the data,
+      // and provides it to the SUNDIALS NVector.
+      UseDevice(Device::IsAvailable());
+      x = MakeNVector(UseDevice());
+      own_NVector = 1;
+   }
 }
 
 SundialsNVector::SundialsNVector(double *data_, int size_)
@@ -615,6 +635,15 @@ N_Vector SundialsNVector::MakeNVector(MPI_Comm comm, bool use_device)
 }
 #endif // MFEM_USE_MPI
 
+template<int num_vecs>
+N_Vector SundialsNVector::MakeManyNVector(bool use_device)
+{
+   N_Vector subvectors[num_vecs];
+   subvectors[0] = SundialsNVector::MakeNVector(use_device);
+   subvectors[1] = SundialsNVector::MakeNVector(use_device);
+   N_Vector x = N_VNew_ManyVector(num_vecs, subvectors, Sundials::GetContext());
+   return x;
+}
 
 // ---------------------------------------------------------------------------
 // SUNMatrix interface functions
@@ -1880,6 +1909,188 @@ ARKStepSolver::~ARKStepSolver()
    SUNMatDestroy(A);
    SUNLinSolFree(LSA);
    SUNNonlinSolFree(NLS);
+   MFEM_ARKode(Free)(&sundials_mem);
+}
+
+// ---------------------------------------------------------------------------
+// SPRKStep interface
+// ---------------------------------------------------------------------------
+
+SPRKStepSolver::SPRKStepSolver()
+   : step_mode(ARK_NORMAL)
+{
+   Y = new SundialsNVector(true);
+   q_ = new SundialsNVector(N_VGetSubvector_ManyVector(*Y, 0));
+   p_ = new SundialsNVector(N_VGetSubvector_ManyVector(*Y, 1));
+}
+
+void SPRKStepSolver::Init(Operator &P, TimeDependentOperator &F)
+{
+   // Initialize the base class
+   SIASolver::Init(P, F);
+
+   // Get the vector length
+   long P_local_size = P.Height();
+   long F_local_size = F.Height();
+#ifdef MFEM_USE_MPI
+   long global_size;
+#endif
+
+   if (Parallel())
+   {
+#ifdef MFEM_USE_MPI
+      MPI_Allreduce(&local_size, &global_size, 1, MPI_LONG, MPI_SUM,
+                    Y->GetComm());
+#endif
+   }
+
+   // Get current time
+   double t = F.GetTime();
+
+   if (sundials_mem)
+   {
+      // Check if the problem size has changed since the last Init() call
+      int resize = 0;
+      if (!Parallel())
+      {
+         resize = (p_->Size() != P_local_size || q_->Size() != F_local_size);
+      }
+      else
+      {
+#ifdef MFEM_USE_MPI
+         int l_resize = (Y->Size() != local_size) ||
+                        (saved_global_size != global_size);
+         MPI_Allreduce(&l_resize, &resize, 1, MPI_INT, MPI_LOR,
+                       Y->GetComm());
+#endif
+      }
+
+      // Free existing solver memory and re-create with new vector size
+      if (resize)
+      {
+         MFEM_ARKode(Free)(&sundials_mem);
+         sundials_mem = NULL;
+      }
+   }
+
+   if (!sundials_mem)
+   {
+      if (!Parallel())
+      {
+         // We set the size on the q_ and p_ subvectors, not Y
+         // Y->SetSize(local_size);
+         q_->SetSize(F_local_size);
+         p_->SetSize(P_local_size);
+      }
+#ifdef MFEM_USE_MPI
+      else
+      {
+         Y->SetSize(local_size, global_size);
+         saved_global_size = global_size;
+      }
+#endif
+
+      // Create SPRKStep memory
+      sundials_mem = SPRKStepCreate(SPRKStepSolver::RHSF, SPRKStepSolver::RHSP,
+                                    t, *Y, Sundials::GetContext());
+      MFEM_VERIFY(sundials_mem, "error in SPRKStepCreate()");
+
+      // Attach the SPRKStepSolver as user-defined data
+      flag = MFEM_ARKode(SetUserData)(sundials_mem, this);
+      MFEM_VERIFY(flag == ARK_SUCCESS,
+                  "error in " STR(MFEM_ARKode(SetUserData)) "()");
+   }
+
+   // Set the reinit flag to call SPRKStepReInit() in the next Step() call.
+   reinit = true;
+}
+
+void SPRKStepSolver::SetOrder(int order)
+{
+   flag = MFEM_ARKode(SetOrder)(sundials_mem, order);
+   MFEM_VERIFY(flag == ARK_SUCCESS,
+               "error in " STR(MFEM_ARKode(SetOrder)) "()");
+}
+
+void SPRKStepSolver::SetFixedStep(double dt)
+{
+   flag = MFEM_ARKode(SetFixedStep)(sundials_mem, dt);
+   MFEM_VERIFY(flag == ARK_SUCCESS,
+               "error in " STR(MFEM_ARKode(SetFixedStep)) "()");
+}
+
+void SPRKStepSolver::Step(Vector& q, Vector &p, real_t &t, real_t &dt)
+{
+   q_->MakeRef(q, 0, q.Size());
+   p_->MakeRef(p, 0, p.Size());
+
+   MFEM_VERIFY(q_->Size() == q.Size(), "size mismatch");
+   MFEM_VERIFY(p_->Size() == p.Size(), "size mismatch");
+
+   // Reinitialize ARKStep memory if needed
+   if (reinit)
+   {
+      flag = SPRKStepReInit(sundials_mem,
+                            SPRKStepSolver::RHSF, SPRKStepSolver::RHSP, t, *Y);
+      MFEM_VERIFY(flag == ARK_SUCCESS, "error in SPRKStepReInit()");
+
+      // reset flag
+      reinit = false;
+   }
+
+   // Integrate the system
+   double tout = t + dt;
+   flag = MFEM_ARKode(Evolve)(sundials_mem, tout, *Y, &t, step_mode);
+   MFEM_VERIFY(flag >= 0, "error in " STR(MFEM_ARKode(Evolve)) "()");
+
+   // Make sure host is up to date
+   Y->HostRead();
+
+   // Return the last incremental step size
+   flag = MFEM_ARKode(GetLastStep)(sundials_mem, &dt);
+   MFEM_VERIFY(flag == ARK_SUCCESS,
+               "error in " STR(MFEM_ARKode(GetLastStep)) "()");
+}
+
+int SPRKStepSolver::RHSF(sunrealtype t, const N_Vector y, N_Vector result,
+                         void *user_data)
+{
+   // Get data from N_Vectors
+   const SundialsNVector mfem_q(N_VGetSubvector_ManyVector(y, 1));
+   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 0));
+   SPRKStepSolver *self = static_cast<SPRKStepSolver*>(user_data);
+
+   // Check that the ODE is not expressed in EXPLICIT form
+   MFEM_VERIFY(self->F_->isExplicit(), "ODE operator is not expressed in EXPLICIT form")
+
+   // Compute F = -dV/dq in dp/dt = F
+   self->F_->SetTime(t);
+   self->F_->ExplicitMult(mfem_q, mfem_result);
+
+   // Return success
+   return (0);
+}
+
+int SPRKStepSolver::RHSP(sunrealtype t, const N_Vector y, N_Vector result,
+                         void *user_data)
+{
+   // Get data from N_Vectors
+   const SundialsNVector mfem_p(N_VGetSubvector_ManyVector(y, 0));
+   SundialsNVector mfem_result(N_VGetSubvector_ManyVector(result, 1));
+   SPRKStepSolver *self = static_cast<SPRKStepSolver*>(user_data);
+
+   // Compute P = dT/dp in dp/dt = P
+   self->P_->Mult(mfem_p, mfem_result);
+
+   // Return success
+   return (0);
+}
+
+SPRKStepSolver::~SPRKStepSolver()
+{
+   delete Y;
+   delete q_;
+   delete p_;
    MFEM_ARKode(Free)(&sundials_mem);
 }
 

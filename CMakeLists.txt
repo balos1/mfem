@@ -330,7 +330,7 @@ endif()
 
 # SUNDIALS
 if (MFEM_USE_SUNDIALS)
-  set(SUNDIALS_COMPONENTS CVODES ARKODE KINSOL NVector_Serial)
+  set(SUNDIALS_COMPONENTS CVODES ARKODE KINSOL NVector_Serial NVector_ManyVector)
   if (MFEM_USE_MPI)
     list(APPEND SUNDIALS_COMPONENTS NVector_Parallel NVector_MPIPlusX)
   endif()
