@@ -140,6 +140,7 @@ int main(int argc, char *argv[])
    const char *mesh_file = "../../data/ball-nurbs.mesh";
    int sOrder = 1;
    int tOrder = 1;
+   int ode_solver_type = 1;
    int serial_ref_levels = 0;
    int parallel_ref_levels = 0;
    int visport = 19916;
@@ -161,6 +162,10 @@ int main(int argc, char *argv[])
                   "Finite element order (polynomial degree).");
    args.AddOption(&tOrder, "-to", "--temporal-order",
                   "Time integration order.");
+   args.AddOption(&ode_solver_type, "-s", "--ode-solver",
+                  "ODE solver:\n\t"
+                  "1  - MFEM Symplectic PRK,\n\t"
+                  "2  - ARKODE Symplectic PRK.");
    args.AddOption(&serial_ref_levels, "-rs", "--serial-ref-levels",
                   "Number of serial refinement levels.");
    args.AddOption(&parallel_ref_levels, "-rp", "--parallel-ref-levels",
@@ -301,9 +306,20 @@ int main(int argc, char *argv[])
    }
 
    // Create the ODE solver
-   SIAVSolver siaSolver(tOrder);
-   siaSolver.Init(Maxwell.GetNegCurl(), Maxwell);
-
+   std::unique_ptr<SIASolver> siaSolver;
+   if (ode_solver_type == 1) {
+      siaSolver = std::make_unique<SIAVSolver>(tOrder);
+      siaSolver->Init(Maxwell.GetNegCurl(), Maxwell);
+   } else if (ode_solver_type == 2) {
+      auto sprk_solver = new SPRKStepSolver();
+      sprk_solver->Init(Maxwell.GetNegCurl(), Maxwell);
+      sprk_solver->SetOrder(tOrder);
+      sprk_solver->SetFixedStep(dt);
+      siaSolver.reset(sprk_solver);
+   } else {
+      cout << "Unknown ODE solver type: " << ode_solver_type << '\n';
+      return 3;
+   }
 
    // Initialize GLVis visualization
    if (visualization)
